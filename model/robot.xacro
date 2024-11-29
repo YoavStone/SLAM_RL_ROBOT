@@ -257,6 +257,29 @@ Iz = (2/5)*M*r^2
     <xacro:inertia_caster />
 </link>
 
+<!-- RPLIDAR sensor -->
+<joint name="lidar_joint" type="fixed">
+    <parent link="body_link"/>
+    <child link="lidar_link"/>
+</joint>
+
+<!-- rplidar link -->
+<link name="lidar_link">
+    <visual>
+        <geometry>
+            <cylinder length="${2*w}" radius="${r}"/>
+        </geometry>
+        <origin rpy="0 0 0" xyz="0 0 ${(H/2)+w+s1}"/>
+    </visual>
+    <collision>
+        <geometry>
+            <cylinder length="${2*w}" radius="${r}"/>
+        </geometry>
+        <origin rpy="0 0 0" xyz="0 0 ${(H/2)+w+s1}"/>
+    </collision>
+    <xacro:inertia_wheel />
+</link>
+
 <!-- ##################################################### -->
 <!-- END                                                   -->
 <!-- ##################################################### -->
