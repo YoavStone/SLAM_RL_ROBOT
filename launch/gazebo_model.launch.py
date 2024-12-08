@@ -29,14 +29,24 @@ def generate_launch_description():
     # get robot description from xacro model file && combine with .gazebo
     robotDescription = xacro.process_file(pathModelFile).toxml()
 
+
     # launch file from gazebo_ros pkg
     gazebo_rosPackageLaunch = PythonLaunchDescriptionSource(os.path.join(
         get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py'))
     
+
+
+    # Path to world.sdf file
+    worldFileRelativePath = 'worlds/world_p1.sdf'
+
+    # absolute path to world.sdf
+    pathWorldFile = os.path.join(get_package_share_directory(namePackage), worldFileRelativePath)
+
     # if using in gazebo: empty world model
     gazeboLaunch = IncludeLaunchDescription(gazebo_rosPackageLaunch, launch_arguments=
-        {'gz_args': ['-r -v -v4 empty.sdf'], 'on_exit_shutdown': 'true'}.items())
+        {'gz_args': [f'-r -v -v4 {pathWorldFile}'], 'on_exit_shutdown': 'true'}.items())
     
+
 
     # Gazebo node
     spawnModelNodeGazebo = Node(
