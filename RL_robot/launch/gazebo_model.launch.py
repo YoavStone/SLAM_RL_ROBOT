@@ -13,7 +13,7 @@ from launch.substitutions import LaunchConfiguration
 
 from launch_ros.actions import Node
 import xacro
-#giz
+
 
 def generate_launch_description():
 
