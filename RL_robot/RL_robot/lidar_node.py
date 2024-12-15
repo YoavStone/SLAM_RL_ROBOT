@@ -16,7 +16,7 @@ class LaserScanSubscriber(Node):
 
         self.subscription_ = self.create_subscription(
             LaserScan,
-            '/lidar',
+            '/scan',
             self.listener_callback,
             10
             )

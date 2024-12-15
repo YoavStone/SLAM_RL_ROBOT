@@ -37,6 +37,10 @@ setup(
         (os.path.join(
          'share', package_name, 'rviz/'),
          glob(os.path.join('rviz/*'))),
+
+        (os.path.join(
+         'share', package_name, 'robot_controller/'),
+         glob(os.path.join('robot_controller/*'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

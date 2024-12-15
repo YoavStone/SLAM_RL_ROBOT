@@ -48,7 +48,8 @@
 
     <sensor name='lidar_sensor' type='gpu_lidar'>"
         <pose relative_to='lidar_link'>0 0 0.1 0 0 0</pose>
-        <topic>lidar</topic>
+        <topic>scan</topic>
+        <gz_frame_id>base_footprint</gz_frame_id>
         <update_rate>5.5</update_rate>
         <always_on>1</always_on>
         <visualize>true</visualize>
