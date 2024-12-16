@@ -51,16 +51,9 @@ def generate_launch_description():
     # Async toolbox SLAM parameters file
     absPathParamSLAM = os.path.join(get_package_share_directory(namePackage), 'robot_controller/mapper_params_online_async.yaml')
 
-    # async toolbox SLAM
-    start_async_slam_toolbox_node = Node(
-        parameters=[
-            absPathParamSLAM,
-            {'use_sim_time': True}
-        ],
-        package='slam_toolbox',
-        executable='async_slam_toolbox_node',
-        name='slam_toolbox',
-        output='screen'
+    slam_toolbox_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')]),
+        launch_arguments={'use_sim_time': 'true', 'slam_params_file': absPathParamSLAM}.items()
     )
     
 
@@ -123,6 +116,6 @@ def generate_launch_description():
 
     launchDescriptionObject.add_action(rviz)
 
-    launchDescriptionObject.add_action(start_async_slam_toolbox_node)
+    launchDescriptionObject.add_action(slam_toolbox_launch)
 
     return launchDescriptionObject
