@@ -51,7 +51,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'lidar_node = RL_robot.lidar_node:main'
+            'lidar_node = RL_robot.lidar_node:main',
+            'control_motors = RL_robot.control_motors:main',
         ],
     },
 )
