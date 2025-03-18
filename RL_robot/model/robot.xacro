@@ -14,7 +14,7 @@
 <!-- PI Constant -->
 <xacro:property name="PI" value="3.14159265359"/>
 
-<!-- Body Dimensions -->
+<!-- Body Box Dimensions -->
 <!-- R = side of robot body -->
 <!-- H = height of robot body -->
 <xacro:property name="R" value="0.3"/>
