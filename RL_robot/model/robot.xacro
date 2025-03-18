@@ -15,24 +15,24 @@
 <xacro:property name="PI" value="3.14159265359"/>
 
 <!-- Body Dimensions -->
-<!-- R = radius of robot -->
-<!-- H = height of robot -->
-<xacro:property name="R" value="0.25"/>
-<xacro:property name="H" value="0.35"/>
+<!-- R = side of robot body -->
+<!-- H = height of robot body -->
+<xacro:property name="R" value="0.3"/>
+<xacro:property name="H" value="0.25"/>
 
 <!-- Wheels Dimensions -->
 <!-- r = wheels && caster radius -->
 <!-- w = wheels width -->
-<xacro:property name="r" value="0.1"/>
-<xacro:property name="w" value="0.04"/>
+<xacro:property name="r" value="0.034"/>
+<xacro:property name="w" value="0.028"/>
 
 <!-- Lengths to centers -->
 <!-- s1 = length from c1 to c2 -->
 <!-- s2 = length from c2 to c3 && c2 to c4 -->
 <!-- s3 = length from c2 to c5 -->
 <xacro:property name="s1" value="${H/2+r}"/>
-<xacro:property name="s2" value="${R}"/>
-<xacro:property name="s3" value="${s2/2.0}"/>
+<xacro:property name="s2" value="${R/2.0}"/>
+<xacro:property name="s3" value="${R/2.0-0.03}"/>
 
 
 <!-- ##################################################### -->
@@ -72,15 +72,16 @@ Iz = (2/5)*M*r^2
 
 <!-- MASSES -->
 <!-- Body -->
-<xacro:property name="m1" value="${d1*PI*H*R*R}"/>
+<xacro:property name="m1" value="${d1*H*R*R}"/>
 <!-- Wheel -->
 <xacro:property name="m2" value="${d2*PI*w*r*r}"/>
 <!-- Caster -->
 <xacro:property name="m3" value="${d3*(4.0/3.0)*PI*r*r*r}"/>
 
 <!-- Momments of inertia Body -->
-<xacro:property name="I_body" value="${(1.0/12.0)*m1*(3.0*R*R+H*H)}"/>
-<xacro:property name="Iz_body" value="${0.5*m1*R*R}"/>
+<xacro:property name="Ix_body" value="${(1.0/12.0)*m1*(R*R+H*H)}"/>
+<xacro:property name="Iy_body" value="${(1.0/12.0)*m1*(R*R+H*H)}"/>
+<xacro:property name="Iz_body" value="${(1.0/12.0)*m1*(R*R+R*R)}"/>
 
 <!-- Momments of inertia Wheel -->
 <xacro:property name="I_wheel" value="${(1.0/12.0)*m2*(3.0*r*r+w*w)}"/>
@@ -95,7 +96,7 @@ Iz = (2/5)*M*r^2
     <inertial>
     <origin rpy="0 0 0" xyz="0 0 ${s1}"/>
     <mass value="${m1}"/>
-    <inertia ixx="${I_body}" ixy="0.0" ixz="0.0" iyy="${I_body}" iyz="0.0" izz="${Iz_body}"/>
+    <inertia ixx="${Ix_body}" ixy="0.0" ixz="0.0" iyy="${Iy_body}" iyz="0.0" izz="${Iz_body}"/>
     </inertial>
 </xacro:macro>
 
@@ -141,13 +142,13 @@ Iz = (2/5)*M*r^2
 <link name="body_link">
     <visual>
         <geometry>
-            <cylinder length="${H}" radius="${R}"/>
+            <box size="${R} ${R} ${H}"/>
         </geometry>
         <origin rpy="0 0 0" xyz="0 0 ${s1}"/>
     </visual>
     <collision>
         <geometry>
-            <cylinder length="${H}" radius="${R}"/>
+            <box size="${R} ${R} ${H}"/>
         </geometry>
         <origin rpy="0 0 0" xyz="0 0 ${s1}"/>
     </collision>
@@ -159,7 +160,7 @@ Iz = (2/5)*M*r^2
 <joint name="wheel1_joint" type="continuous">
     <parent link="body_link"/>
     <child link="wheel1_link"/>
-    <origin rpy="0 0 0" xyz="0 ${-s2} ${r}"/>
+    <origin rpy="0 0 0" xyz="${-s3} ${-s2} ${r}"/>
     <axis xyz="0 1 0"/>
     <limit effort="50000" velocity="10"/>
     <dynamics damping="1.0" friction="1.0"/>
@@ -186,7 +187,7 @@ Iz = (2/5)*M*r^2
 <joint name="wheel2_joint" type="continuous">
     <parent link="body_link"/>
     <child link="wheel2_link"/>
-    <origin rpy="0 0 0" xyz="0 ${s2} ${r}"/>
+    <origin rpy="0 0 0" xyz="${-s3} ${s2} ${r}"/>
     <axis xyz="0 1 0"/>
     <limit effort="50000" velocity="10"/>
     <dynamics damping="1.0" friction="1.0"/>
@@ -223,13 +224,13 @@ Iz = (2/5)*M*r^2
         <geometry>
             <sphere radius="${r}"/>
         </geometry>
-        <origin rpy="0 0 0" xyz="${s3} 0 ${r}"/>
+        <origin rpy="0 0 0" xyz="${s3} ${s3} ${r}"/>
     </visual>
     <collision>
         <geometry>
             <sphere radius="${r}"/>
         </geometry>
-        <origin rpy="0 0 0" xyz="${s3} 0 ${r}"/>
+        <origin rpy="0 0 0" xyz="${s3} ${s3} ${r}"/>
     </collision>
     <xacro:inertia_caster />
 </link>
@@ -246,13 +247,13 @@ Iz = (2/5)*M*r^2
         <geometry>
             <sphere radius="${r}"/>
         </geometry>
-        <origin rpy="0 0 0" xyz="${-s3} 0 ${r}"/>
+        <origin rpy="0 0 0" xyz="${s3} ${-s3} ${r}"/>
     </visual>
     <collision>
         <geometry>
             <sphere radius="${r}"/>
         </geometry>
-        <origin rpy="0 0 0" xyz="${-s3} 0 ${r}"/>
+        <origin rpy="0 0 0" xyz="${s3} ${-s3} ${r}"/>
     </collision>
     <xacro:inertia_caster />
 </link>
@@ -269,13 +270,13 @@ Iz = (2/5)*M*r^2
         <geometry>
             <cylinder length="${2*w}" radius="${r}"/>
         </geometry>
-        <origin rpy="0 0 0" xyz="0 0 ${(H/2)+w+s1}"/>
+        <origin rpy="0 0 0" xyz="${-s3} 0 ${(H/2)+w+s1}"/>
     </visual>
     <collision>
         <geometry>
             <cylinder length="${2*w}" radius="${r}"/>
         </geometry>
-        <origin rpy="0 0 0" xyz="0 0 ${(H/2)+w+s1}"/>
+        <origin rpy="0 0 0" xyz="${-s3} 0 ${(H/2)+w+s1}"/>
     </collision>
     <xacro:inertia_wheel />
 </link>
