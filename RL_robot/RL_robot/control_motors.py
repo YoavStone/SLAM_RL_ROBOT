@@ -28,8 +28,8 @@ class TeleopNode(Node):
             10)
 
         # Set default velocities
-        self.linear_speed = 0.2  # m/s
-        self.angular_speed = 0.5  # rad/s
+        self.linear_speed = 1.0  # m/s
+        self.angular_speed = 1.0  # rad/s
 
         # Store latest position and orientation
         self.current_x = 0.0
@@ -37,16 +37,10 @@ class TeleopNode(Node):
         self.current_theta = 0.0
 
         # Thresholds for printing odometry updates
-        self.position_threshold = 0.01  # 1 cm
-        self.orientation_threshold = 0.017  # ~1 degree in radians
+        self.position_threshold = 0.001
+        self.orientation_threshold = 0.0017
 
         # Start keyboard reading thread
-        self.running = True
-        self.thread = threading.Thread(target=self.read_keyboard_input)
-        self.thread.daemon = True
-        self.thread.start()
-
-        print('Teleop Node initialized')
         print('Use WASD keys to control the robot:')
         print('W: Move forward')
         print('A: Turn left')
@@ -54,6 +48,13 @@ class TeleopNode(Node):
         print('D: Turn right')
         print('X: Stop')
         print('Q: Quit')
+
+        self.running = True
+        self.thread = threading.Thread(target=self.read_keyboard_input)
+        self.thread.daemon = True
+        self.thread.start()
+
+        print('Teleop Node initialized')
 
     def odom_callback(self, msg):
         # Extract position and orientation from odometry message
@@ -73,8 +74,7 @@ class TeleopNode(Node):
 
         if position_change >= self.position_threshold or orientation_change >= self.orientation_threshold:
             # Print updated odometry
-            print(
-                f'Position: ({new_x:.3f}, {new_y:.3f}) m, Orientation: {math.degrees(new_theta):.1f} degrees')
+            print(f'Position: ({new_x:.3f}, {new_y:.3f}) m, Orientation: {math.degrees(new_theta):.1f} degrees')
 
             # Update stored values
             self.current_x = new_x
