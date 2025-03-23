@@ -10,9 +10,9 @@ import threading
 import time
 
 
-class TeleopNode(Node):
+class BaseToRobot(Node):
     def __init__(self):
-        super().__init__('teleop_node')
+        super().__init__('base_talk_to_robot')
 
         # Create publisher for sending velocity commands
         self.cmd_vel_publisher = self.create_publisher(
@@ -23,7 +23,7 @@ class TeleopNode(Node):
         # Create subscription for receiving odometry data
         self.odom_subscription = self.create_subscription(
             Odometry,
-            'wheel_odometry',
+            'odom',
             self.odom_callback,
             10)
 
@@ -147,7 +147,7 @@ class TeleopNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = TeleopNode()
+    node = BaseToRobot()
 
     try:
         rclpy.spin(node)
