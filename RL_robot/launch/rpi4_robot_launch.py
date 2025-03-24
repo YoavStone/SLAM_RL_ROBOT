@@ -14,9 +14,6 @@ import xacro
 
 def generate_launch_description():
 
-    # name in xacro file
-    robotXacroName = 'mapping_robot'
-
     # pkg name to define the paths
     namePackage = 'RL_robot'
 
@@ -32,17 +29,6 @@ def generate_launch_description():
     # Async toolbox SLAM parameters file
     absPathParamSLAM = os.path.join(get_package_share_directory(namePackage),
                                     'robot_controller/mapper_params_online_async.yaml')
-
-    # Spawn model GZ node
-    spawnModelNodeGazebo = Node(
-        package = 'ros_gz_sim',
-        executable = 'create',
-        arguments = [
-            '-name', robotXacroName,
-            '-topic', 'robot_description'
-        ],
-        output = 'screen',
-    )
 
     # Robot State Publisher node
     nodeRobotStatePublisher = Node(
@@ -70,7 +56,6 @@ def generate_launch_description():
     # empty launch description object
     launchDescriptionObject = LaunchDescription()
 
-    #launchDescriptionObject.add_action(spawnModelNodeGazebo)  # delete?
     launchDescriptionObject.add_action(nodeRobotStatePublisher)
 
     launchDescriptionObject.add_action(rviz)
