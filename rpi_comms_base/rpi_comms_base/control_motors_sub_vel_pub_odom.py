@@ -41,7 +41,7 @@ class RobotControlNode(Node):
         # Initialize position publisher
         self.odom_publisher = self.create_publisher(
             Odometry,
-            'odom',
+            'odom_robot',
             10)
 
         # Set up timer for regular position updates

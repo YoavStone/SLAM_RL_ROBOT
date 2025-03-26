@@ -2,6 +2,8 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
 import math
 import sys
 import tty
@@ -20,10 +22,12 @@ class BaseToRobot(Node):
             'cmd_vel',
             10)
 
+        self.tf_broadcaster = TransformBroadcaster(self)
+
         # Create subscription for receiving odometry data
         self.odom_subscription = self.create_subscription(
             Odometry,
-            'odom',
+            'odom_robot',
             self.odom_callback,
             10)
 
@@ -57,11 +61,26 @@ class BaseToRobot(Node):
         print('Teleop Node initialized')
 
     def odom_callback(self, msg):
-        # Extract position and orientation from odometry message
+        # Create and broadcast TF transform from odom to base_footprint
+        transform = TransformStamped()
+        transform.header.stamp = msg.header.stamp
+        transform.header.frame_id = 'odom'
+        transform.child_frame_id = 'base_footprint'
+
+        # Copy position from received odometry
+        transform.transform.translation.x = msg.pose.pose.position.x
+        transform.transform.translation.y = msg.pose.pose.position.y
+        transform.transform.translation.z = msg.pose.pose.position.z
+
+        # Copy orientation from received odometry
+        transform.transform.rotation = msg.pose.pose.orientation
+
+        # Broadcast the transform
+        self.tf_broadcaster.sendTransform(transform)
+
+        # Optional: Print position for debugging
         new_x = msg.pose.pose.position.x
         new_y = msg.pose.pose.position.y
-
-        # Extract orientation (yaw/theta) from quaternion
         qz = msg.pose.pose.orientation.z
         qw = msg.pose.pose.orientation.w
         new_theta = 2 * math.atan2(qz, qw)
@@ -80,7 +99,6 @@ class BaseToRobot(Node):
             self.current_x = new_x
             self.current_y = new_y
             self.current_theta = new_theta
-
     def read_keyboard_input(self):
         # Save terminal settings
         old_settings = termios.tcgetattr(sys.stdin)
