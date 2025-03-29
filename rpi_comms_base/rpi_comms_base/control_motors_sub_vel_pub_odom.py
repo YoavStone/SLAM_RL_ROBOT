@@ -9,7 +9,10 @@ from . import L298nDriver
 
 class RobotControlNode(Node):
     def __init__(self):
+        print("will create node")
         super().__init__('robot_control_node')
+
+        print("node starting to init")
 
         # Initialize motor driver
         # Define GPIO pins
@@ -28,8 +31,13 @@ class RobotControlNode(Node):
 
         FREQ = 1000
 
+        print("will init driver")
+
         self.driver = L298nDriver.L298nDriver(in1, in2, in3, in4, pwmR, pwmL, FREQ, ena1, enb1, ena2, enb2)
+        print("will init encoder interrupt")
         self.driver.call_encoder_interrupt()
+
+        print("will init cmd vel")
 
         # Initialize velocity subscriber
         self.velocity_subscription = self.create_subscription(
@@ -37,6 +45,8 @@ class RobotControlNode(Node):
             'cmd_vel',
             self.velocity_callback,
             10)
+
+        print("will init odom pub")
 
         # Initialize position publisher
         self.odom_publisher = self.create_publisher(
@@ -180,10 +190,15 @@ class RobotControlNode(Node):
 
 
 def main(args=None):
+    print("will init control node")
     rclpy.init(args=args)
+    print("will init node")
     node = RobotControlNode()
+    print("will spin")
     rclpy.spin(node)
+    print("will destroy")
     node.destroy_node()
+    print("will shut down")
     rclpy.shutdown()
 
 

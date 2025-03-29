@@ -32,7 +32,7 @@ setup(
     entry_points={
         'console_scripts': [
             'script = rpi_comms_base.script:main',
-            'control_motors = rpi_comms_base.control_motors_sub_vel_pub_odom:main'
+            'control_motors = rpi_comms_base.control_motors_sub_vel_pub_odom:main',
         ],
     },
 )
