@@ -1,6 +1,4 @@
-import time
 from gpiozero import DigitalOutputDevice, PWMOutputDevice, RotaryEncoder
-from gpiozero import DigitalInputDevice
 
 
 class Motor:

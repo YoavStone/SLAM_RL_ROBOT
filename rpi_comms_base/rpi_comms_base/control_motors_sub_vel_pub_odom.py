@@ -9,6 +9,7 @@ from . import L298nDriver
 
 class RobotControlNode(Node):
     def __init__(self):
+        print("will initialized robot control node")
         super().__init__('robot_control_node')
 
         # Initialize motor driver
