@@ -74,6 +74,7 @@ class L298nDriver:
         self.wheel_radius = 0.034  # meters
         self.wheel_separation = 0.34  # meters
         self.ticks_per_revolution = 170  # encoder ticks per revolution
+        self.max_linear_speed = 1  # max speed in m/s at full PWM
 
         # Speed tracking
         self.last_R_pos = 0
@@ -149,8 +150,7 @@ class L298nDriver:
     def set_speed(self, speed):
         """Legacy method - converts a simple speed parameter to linear velocity"""
         # Convert speed (0-1) to approximate linear velocity in m/s
-        max_linear_speed = 0.5  # max speed in m/s at full PWM
-        self.set_velocity(speed * max_linear_speed, 0.0)
+        self.set_velocity(speed * self.max_linear_speed, 0.0)
 
     def update_speed_control(self):
         """

@@ -67,8 +67,8 @@ class RobotControlNode(Node):
         self.last_time = time.time()
 
         # Maximum velocity limits
-        self.max_linear_velocity = 0.5  # m/s
-        self.max_angular_velocity = 1.5  # rad/s
+        self.max_linear_velocity = 1.0  # m/s
+        self.max_angular_velocity = 0.6  # rad/s
 
         print('Robot Control Node has been initialized')
 
