@@ -9,7 +9,7 @@ from . import L298nDriver
 
 class RobotControlNode(Node):
     def __init__(self):
-        print("Will initialize robot control node")
+        print("will initialized robot control node")
         super().__init__('robot_control_node')
 
         # Initialize motor driver
@@ -46,10 +46,7 @@ class RobotControlNode(Node):
             10)
 
         # Set up timer for regular position updates
-        self.odom_timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
-
-        # Set up timer for speed control updates
-        self.speed_control_timer = self.create_timer(0.05, self.update_speed_control)  # 20Hz update rate
+        self.timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
 
         # Set up parameters for odometry calculation
         self.wheel_radius = 0.034  # meters
@@ -63,28 +60,54 @@ class RobotControlNode(Node):
         self.y = 0.0
         self.theta = 0.0
 
+        # Speed multiplier factor
+        self.linear_speed_factor = 0.8
+        self.turn_speed_factor = 0.8
+
         # Time tracking
         self.last_time = time.time()
-
-        # Maximum velocity limits
-        self.max_linear_velocity = 1.0  # m/s
-        self.max_angular_velocity = 0.6  # rad/s
 
         print('Robot Control Node has been initialized')
 
     def velocity_callback(self, msg):
         print(f'Received velocity command: linear={msg.linear.x:.2f}, angular={msg.angular.z:.2f}')
 
-        # Limit velocity to prevent damage to motors
-        linear_velocity = max(min(msg.linear.x, self.max_linear_velocity), -self.max_linear_velocity)
-        angular_velocity = max(min(msg.angular.z, self.max_angular_velocity), -self.max_angular_velocity)
+        speed = msg.linear.x
+        turn = msg.angular.z
 
-        # Send velocity command to driver
-        self.driver.set_velocity(linear_velocity, angular_velocity)
+        # Convert received velocities to motor commands
+        self.convert_vel_to_cmd(speed, turn)
 
-    def update_speed_control(self):
-        """Timer callback to update the speed control loop"""
-        self.driver.update_speed_control()
+    def convert_vel_to_cmd(self, speed, turn):
+        """
+        Convert linear and angular velocity to motor commands
+        """
+        # Simple mapping of speed and turn to motor actions
+        # Adjust these thresholds and logic based on your robot's behavior
+        if abs(speed) < 0.05 and abs(turn) < 0.05:
+            # Stop if both speed and turn are very small
+            self.driver.stop()
+        elif abs(speed) > 0:
+            # Primarily moving forward/backward
+            if speed > 0:
+                self.driver.go_forward()
+                # Set speed proportionally (adjust scale as needed)
+                motor_speed = min(self.linear_speed_factor, abs(speed)*self.linear_speed_factor)
+                self.driver.set_speed(motor_speed)
+            else:
+                self.driver.go_backwards()
+                motor_speed = min(self.linear_speed_factor, abs(speed)*self.linear_speed_factor)
+                self.driver.set_speed(motor_speed)
+        else:
+            # Primarily turning
+            if turn > 0:
+                self.driver.turn_left()
+                motor_speed = min(self.turn_speed_factor, abs(turn)*self.turn_speed_factor)  # Turn might need lower speed
+                self.driver.set_speed(motor_speed)
+            else:
+                self.driver.turn_right()
+                motor_speed = min(self.turn_speed_factor, abs(turn)*self.turn_speed_factor)
+                self.driver.set_speed(motor_speed)
 
     def publish_position(self):
         # Get current motor positions
