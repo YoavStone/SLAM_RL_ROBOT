@@ -101,7 +101,7 @@ class RobotControlNode(Node):
     def convert_cmd_vel_to_motor_speeds(self, linear_vel, angular_vel):
         """
         Convert linear and angular velocities from cmd_vel into desired
-        left and right wheel speeds in rad/s.
+        left and right wheel speeds in rad/s. Signs indicate direction.
 
         Args:
             linear_vel (float): Linear velocity in m/s
@@ -109,21 +109,25 @@ class RobotControlNode(Node):
 
         Returns:
             tuple: (right_wheel_speed, left_wheel_speed) in rad/s
+                  Positive values for forward, negative for backward
         """
         # Calculate wheel velocities based on differential drive kinematics
-        # v_r = (2*v + ω*L) / (2*r)
-        # v_l = (2*v - ω*L) / (2*r)
-        # where v is linear velocity, ω is angular velocity,
-        # L is wheel separation, and r is wheel radius
+        # For a differential drive robot:
+        # v_r = v + ω*L/2
+        # v_l = v - ω*L/2
+        # where v is linear velocity, ω is angular velocity, L is wheel separation
 
-        right_wheel_speed = (2 * linear_vel + angular_vel * self.wheel_separation) / (2 * self.wheel_radius)
-        left_wheel_speed = (2 * linear_vel - angular_vel * self.wheel_separation) / (2 * self.wheel_radius)
+        # Calculate linear velocities for each wheel
+        v_right = linear_vel + (angular_vel * self.wheel_separation / 2)
+        v_left = linear_vel - (angular_vel * self.wheel_separation / 2)
 
-        # Convert to rad/s
-        right_wheel_speed_rad = right_wheel_speed / self.wheel_radius
-        left_wheel_speed_rad = left_wheel_speed / self.wheel_radius
+        # Convert to angular velocity (rad/s)
+        # The sign will correctly indicate direction:
+        # positive for forward, negative for backward
+        right_wheel_speed = v_right / self.wheel_radius
+        left_wheel_speed = v_left / self.wheel_radius
 
-        return right_wheel_speed_rad, left_wheel_speed_rad
+        return right_wheel_speed, left_wheel_speed
 
     def velocity_callback(self, msg):
         print(f'Received velocity command: linear={msg.linear.x:.2f}, angular={msg.angular.z:.2f}')
