@@ -32,8 +32,8 @@ class BaseToRobot(Node):
             10)
 
         # Set default velocities
-        self.linear_speed = 0.8  # m/s
-        self.angular_speed = 0.8  # rad/s
+        self.linear_speed = 0.4  # m/s
+        self.angular_speed = 0.4  # rad/s
 
         # Store latest position and orientation
         self.current_x = 0.0
@@ -93,7 +93,8 @@ class BaseToRobot(Node):
 
         if position_change >= self.position_threshold or orientation_change >= self.orientation_threshold:
             # Print updated odometry
-            print(f'Position: ({new_x:.3f}, {new_y:.3f}) m, Orientation: {math.degrees(new_theta):.1f} degrees')
+            print(f'Position: ({new_x:.3f}, {new_y:.3f})')
+            print(f'Orientation: {math.degrees(new_theta):.1f} degrees')
 
             # Update stored values
             self.current_x = new_x
