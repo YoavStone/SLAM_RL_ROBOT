@@ -18,7 +18,9 @@ class MotorController:
         self.r_motor_desired_speed = 0.0
         self.l_motor_desired_speed = 0.0
 
-        self.pwm_change_factor = 1.0  # adjust how much the inaccuracy in the speed difference affects the pwm change
+        self.pwm_change_factor = 0.2  # adjust how much the inaccuracy in the speed difference affects the pwm change
+
+        self.max_speed = 0.7
 
         self.ticks_per_revolution = ticks_per_revolution
 
@@ -81,12 +83,7 @@ class MotorController:
             error_pwm_r = 1.0 * error_speed_r * self.pwm_change_factor
             error_pwm_l = 1.0 * error_speed_l * self.pwm_change_factor
 
-        new_pwm_r = abs(min(1.0, pwm_r + error_pwm_r))
-        new_pwm_l = abs(min(1.0, pwm_l + error_pwm_l))
-
-        # should never happen but here just in case:
-        if new_pwm_r < 0.05 and new_pwm_l < 0.05:
-            self.driver.stop()
-            return
+        new_pwm_r = min(self.max_speed, abs(pwm_r + error_pwm_r))
+        new_pwm_l = min(self.max_speed, abs(pwm_l + error_pwm_l))
 
         self.driver.set_pwm(new_pwm_r, new_pwm_l)

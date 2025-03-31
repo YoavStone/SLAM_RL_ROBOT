@@ -126,8 +126,8 @@ class RobotControlNode(Node):
 
         right_wheel_speed, left_wheel_speed = self.motor_controller.get_motor_speeds()
 
-        # print('desired: ', self.motor_controller.r_motor_desired_speed, self.motor_controller.l_motor_desired_speed)
-        # print('current: ', right_wheel_speed, left_wheel_speed)
+        print('desired: ', self.motor_controller.r_motor_desired_speed, self.motor_controller.l_motor_desired_speed)
+        print('current: ', right_wheel_speed, left_wheel_speed)
 
         # Convert received velocities to motor commands
         self.convert_vel_to_motor_dir(speed, turn)

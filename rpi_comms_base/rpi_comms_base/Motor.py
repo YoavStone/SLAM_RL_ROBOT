@@ -18,7 +18,7 @@ class Motor:
         self.FREQ = FREQ
 
         # Initialize state variables
-        self.pwm = 0.75  # 0-1 scale
+        self.pwm = 0.7  # 0-1 scale
         self.en_count = 0
         self.dir = 0
 
@@ -56,7 +56,7 @@ class Motor:
         self.pwm = min(pwm, 1.0)
         # Apply the new pwm to the PWM pin
         self.enable_pin.value = self.pwm
-        # print('pwm: ', pwm)
+        print('pwm: ', pwm)
 
     def update_en_count(self):
         self.en_count = self.encoder.steps
