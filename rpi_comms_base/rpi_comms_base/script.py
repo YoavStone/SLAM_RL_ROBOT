@@ -57,7 +57,7 @@ def main():
         elif is_number_between_0_and_1(x):
             x = float(x)
             x = round(x, 2)  # two digits after decimal point
-            driver.set_speed(x)
+            driver.set_pwm(x, x)
 
         elif x == 'p':
             print(driver.get_motors_pos())

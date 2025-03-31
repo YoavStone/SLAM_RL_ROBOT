@@ -45,7 +45,7 @@ class ControlMotors:
         if 0 < abs(speed) <= 1:
             vel = float(abs(speed))*self.linearSpeedConst
             vel = round(vel, 2)  # two digits after decimal point
-            self.driver.set_speed(vel)
+            self.driver.set_pwm(vel, vel)
             print("conv vel VEL: ", vel)
 
         if speed > 0:
@@ -58,10 +58,10 @@ class ControlMotors:
 
         elif turn > 0:
             print("conv vel TURN RIGHT")
-            self.driver.set_speed(self.turn_speed)
+            self.driver.set_pwm(self.turn_speed, self.turn_speed)
             self.driver.turn_right()
 
         elif turn < 0:
             print("conv vel TURN LEFT")
-            self.driver.set_speed(self.turn_speed)
+            self.driver.set_pwm(self.turn_speed, self.turn_speed)
             self.driver.turn_left()
