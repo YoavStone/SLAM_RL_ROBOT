@@ -56,7 +56,7 @@ class Motor:
         self.pwm = min(pwm, 1.0)
         # Apply the new pwm to the PWM pin
         self.enable_pin.value = self.pwm
-        print('pwm: ', pwm)
+        # print('pwm: ', pwm)
 
     def update_en_count(self):
         self.en_count = self.encoder.steps
