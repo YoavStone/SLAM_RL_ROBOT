@@ -108,10 +108,23 @@ class RobotControlNode(Node):
         return right_wheel_speed, left_wheel_speed
 
     def velocity_callback(self, msg):
-        print(f'Received velocity command: linear={msg.linear.x:.2f}, angular={msg.angular.z:.2f}')
+        speed = msg.linear.x
+        turn = msg.angular.z
 
-        self.r_motor_desired_speed, self.l_motor_desired_speed = self.convert_cmd_vel_to_motor_speeds(
-            msg.linear.x, msg.angular.z)
+        if abs(speed) < 0.05 and abs(turn) < 0.05:
+            # Stop if both speed and turn are very small
+            speed = 0.0
+            turn = 0.0
+        elif abs(speed) > 0.0:
+            # Primarily moving forward/backward
+            turn = 0.0
+        else:
+            # Primarily turning
+            speed = 0.0
+
+        print(f'Received velocity command: linear={speed:.2f}, angular={turn:.2f}')
+
+        self.r_motor_desired_speed, self.l_motor_desired_speed = self.convert_cmd_vel_to_motor_speeds(speed, turn)
 
         right_wheel_speed, left_wheel_speed = self.motor_controller.get_motor_speeds()
 
@@ -119,7 +132,7 @@ class RobotControlNode(Node):
         print('current: ', right_wheel_speed, left_wheel_speed)
 
         # Convert received velocities to motor commands
-        self.convert_vel_to_cmd(msg.linear.x, msg.angular.z)
+        self.convert_vel_to_cmd(speed, turn)
 
     def convert_vel_to_cmd(self, speed, turn):
         """
@@ -127,8 +140,7 @@ class RobotControlNode(Node):
         """
         # Simple mapping of speed and turn to motor actions
         # Adjust these thresholds and logic based on your robot's behavior
-        if abs(speed) < 0.05 and abs(turn) < 0.05:
-            # Stop if both speed and turn are very small
+        if speed == 0.0 == turn:
             self.driver.stop()
         elif abs(speed) > 0:
             # Primarily moving forward/backward
