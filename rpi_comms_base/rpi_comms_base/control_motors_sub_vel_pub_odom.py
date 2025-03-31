@@ -132,37 +132,27 @@ class RobotControlNode(Node):
         print('current: ', right_wheel_speed, left_wheel_speed)
 
         # Convert received velocities to motor commands
-        self.convert_vel_to_cmd(speed, turn)
+        self.motor_controller.closed_loop_control_speed(self.r_motor_desired_speed, self.l_motor_desired_speed)
+        self.convert_vel_to_motor_dir(speed, turn)
 
-    def convert_vel_to_cmd(self, speed, turn):
+    def convert_vel_to_motor_dir(self, speed, turn):
         """
-        Convert linear and angular velocity to motor commands
+        Convert linear and angular velocity to motor dir
         """
-        # Simple mapping of speed and turn to motor actions
-        # Adjust these thresholds and logic based on your robot's behavior
         if speed == 0.0 == turn:
             self.driver.stop()
         elif abs(speed) > 0:
             # Primarily moving forward/backward
             if speed > 0:
                 self.driver.go_forward()
-                # Set speed proportionally (adjust scale as needed)
-                motor_speed = min(self.linear_speed_factor, abs(speed)*self.linear_speed_factor)
-                self.driver.set_pwm(motor_speed, motor_speed)
             else:
                 self.driver.go_backwards()
-                motor_speed = min(self.linear_speed_factor, abs(speed)*self.linear_speed_factor)
-                self.driver.set_pwm(motor_speed, motor_speed)
         else:
             # Primarily turning
             if turn > 0:
                 self.driver.turn_left()
-                motor_speed = min(self.turn_speed_factor, abs(turn)*self.turn_speed_factor)  # Turn might need lower speed
-                self.driver.set_pwm(motor_speed, motor_speed)
             else:
                 self.driver.turn_right()
-                motor_speed = min(self.turn_speed_factor, abs(turn)*self.turn_speed_factor)
-                self.driver.set_pwm(motor_speed, motor_speed)
 
     def publish_position(self):
         # Get current motor positions

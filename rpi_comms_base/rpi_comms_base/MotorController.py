@@ -19,6 +19,7 @@ class MotorController:
 
         self.last_time = time.time()
 
+
     def get_motor_speeds(self):
         """
         Calculate the current speed of each motor in rad/s based on encoder readings
@@ -45,8 +46,39 @@ class MotorController:
         self.last_right_pos = right_pos
         self.last_left_pos = left_pos
 
+        self.last_time = time.time()
+
         # Convert ticks to angular velocity (rad/s)
         self.right_wheel_speed = (delta_right / self.ticks_per_revolution) * 2 * math.pi / dt
         self.left_wheel_speed = (delta_left / self.ticks_per_revolution) * 2 * math.pi / dt
 
         return self.right_wheel_speed, self.left_wheel_speed
+
+
+    def closed_loop_control_speed(self, r_motor_desired_speed, l_motor_desired_speed):
+
+        if r_motor_desired_speed == 0.0 == l_motor_desired_speed:
+            self.driver.stop()
+            return
+
+        dt_speeds_r = r_motor_desired_speed - self.right_wheel_speed
+        dt_speeds_l = l_motor_desired_speed - self.left_wheel_speed
+
+        error_speed_r = dt_speeds_r / r_motor_desired_speed
+        error_speed_l = dt_speeds_l / l_motor_desired_speed
+
+        pwm_r = self.driver.R_Motor.pwm
+        pwm_l = self.driver.L_Motor.pwm
+
+        error_pwm_r = pwm_r * error_speed_r
+        error_pwm_l = pwm_l * error_speed_l
+
+        new_pwm_r = max(min(1.0, pwm_r + error_pwm_r), 0.0)
+        new_pwm_l = max(min(1.0, pwm_l + error_pwm_l), 0.0)
+
+        # should never happen but here just in case:
+        if new_pwm_r == 0.0 == new_pwm_l:
+            self.driver.stop()
+            return
+
+        self.driver.set_pwm(new_pwm_r, new_pwm_l)

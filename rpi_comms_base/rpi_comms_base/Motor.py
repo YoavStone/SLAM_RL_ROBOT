@@ -48,8 +48,8 @@ class Motor:
         # Stop the motor by setting both direction pins low
         self.in1.off()  # LOW
         self.in2.off()  # LOW
-        # Could also stop by turning off the enable pin
-        # self.enable_pin.off()
+        self.pwm = 0.0
+        self.enable_pin.value = self.pwm
         self.dir = 0
 
     def change_pwm(self, pwm):
