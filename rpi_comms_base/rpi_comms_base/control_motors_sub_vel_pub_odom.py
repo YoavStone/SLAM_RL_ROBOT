@@ -49,8 +49,7 @@ class RobotControlNode(Node):
         # Set up timer for regular position updates
         self.publisher_timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
         self.closed_loop_speed_control_timer = self.create_timer(
-            0.05, self.motor_controller.closed_loop_control_speed,
-            self.r_motor_desired_speed, self.l_motor_desired_speed)  # 20Hz update rate
+            0.05, self.motor_controller.closed_loop_control_speed)  # 20Hz update rate
 
         # Set up parameters for odometry calculation
         self.wheel_radius = 0.034  # meters
@@ -67,10 +66,6 @@ class RobotControlNode(Node):
         # Speed multiplier factor
         self.linear_speed_factor = 1.0
         self.turn_speed_factor = 1.0
-
-        # Desired Motors Speed
-        self.r_motor_desired_speed = 0.0
-        self.l_motor_desired_speed = 0.0
 
         self.motor_controller = MotorController.MotorController(self.driver, self.ticks_per_revolution)
 
@@ -127,11 +122,11 @@ class RobotControlNode(Node):
 
         print(f'Received velocity command: linear={speed:.2f}, angular={turn:.2f}')
 
-        self.r_motor_desired_speed, self.l_motor_desired_speed = self.convert_cmd_vel_to_motor_speeds(speed, turn)
+        self.motor_controller.r_motor_desired_speed, self.motor_controller.l_motor_desired_speed = self.convert_cmd_vel_to_motor_speeds(speed, turn)
 
         right_wheel_speed, left_wheel_speed = self.motor_controller.get_motor_speeds()
 
-        print('desired: ', self.r_motor_desired_speed, self.l_motor_desired_speed)
+        print('desired: ', self.motor_controller.r_motor_desired_speed, self.motor_controller.l_motor_desired_speed)
         print('current: ', right_wheel_speed, left_wheel_speed)
 
         # Convert received velocities to motor commands

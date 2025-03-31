@@ -15,6 +15,9 @@ class MotorController:
         self.right_wheel_speed = 0.0
         self.left_wheel_speed = 0.0
 
+        self.r_motor_desired_speed = 0.0
+        self.l_motor_desired_speed = 0.0
+
         self.pwm_change_factor = 1.0
 
         self.ticks_per_revolution = ticks_per_revolution
@@ -57,16 +60,16 @@ class MotorController:
         return self.right_wheel_speed, self.left_wheel_speed
 
 
-    def closed_loop_control_speed(self, r_motor_desired_speed, l_motor_desired_speed):
+    def closed_loop_control_speed(self):
 
-        if r_motor_desired_speed == 0.0 == l_motor_desired_speed:
+        if self.r_motor_desired_speed == 0.0 == self.l_motor_desired_speed:
             return
 
-        dt_speeds_r = r_motor_desired_speed - self.right_wheel_speed
-        dt_speeds_l = l_motor_desired_speed - self.left_wheel_speed
+        dt_speeds_r = self.r_motor_desired_speed - self.right_wheel_speed
+        dt_speeds_l = self.l_motor_desired_speed - self.left_wheel_speed
 
-        error_speed_r = dt_speeds_r / r_motor_desired_speed
-        error_speed_l = dt_speeds_l / l_motor_desired_speed
+        error_speed_r = dt_speeds_r / self.r_motor_desired_speed
+        error_speed_l = dt_speeds_l / self.l_motor_desired_speed
 
         pwm_r = self.driver.R_Motor.pwm
         pwm_l = self.driver.L_Motor.pwm
