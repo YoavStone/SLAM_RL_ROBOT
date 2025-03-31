@@ -12,6 +12,9 @@ class MotorController:
         self.last_right_pos = 0.0
         self.last_left_pos = 0.0
 
+        self.right_wheel_speed = 0.0
+        self.left_wheel_speed = 0.0
+
         self.ticks_per_revolution = ticks_per_revolution
 
         self.last_time = time.time()
@@ -39,8 +42,11 @@ class MotorController:
         if dt < 0.001:
             return 0.0, 0.0
 
-        # Convert ticks to angular velocity (rad/s)
-        right_wheel_speed = (delta_right / self.ticks_per_revolution) * 2 * math.pi / dt
-        left_wheel_speed = (delta_left / self.ticks_per_revolution) * 2 * math.pi / dt
+        self.last_right_pos = right_pos
+        self.last_left_pos = left_pos
 
-        return right_wheel_speed, left_wheel_speed
+        # Convert ticks to angular velocity (rad/s)
+        self.right_wheel_speed = (delta_right / self.ticks_per_revolution) * 2 * math.pi / dt
+        self.left_wheel_speed = (delta_left / self.ticks_per_revolution) * 2 * math.pi / dt
+
+        return self.right_wheel_speed, self.left_wheel_speed
