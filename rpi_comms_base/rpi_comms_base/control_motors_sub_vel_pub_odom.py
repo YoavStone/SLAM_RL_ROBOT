@@ -47,7 +47,10 @@ class RobotControlNode(Node):
             10)
 
         # Set up timer for regular position updates
-        self.timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
+        self.publisher_timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
+        self.closed_loop_speed_control_timer = self.create_timer(
+            0.05, self.motor_controller.closed_loop_control_speed,
+            self.r_motor_desired_speed, self.l_motor_desired_speed)  # 20Hz update rate
 
         # Set up parameters for odometry calculation
         self.wheel_radius = 0.034  # meters
@@ -133,7 +136,6 @@ class RobotControlNode(Node):
 
         # Convert received velocities to motor commands
         self.convert_vel_to_motor_dir(speed, turn)
-        self.motor_controller.closed_loop_control_speed(self.r_motor_desired_speed, self.l_motor_desired_speed)
 
     def convert_vel_to_motor_dir(self, speed, turn):
         """
