@@ -48,8 +48,6 @@ class RobotControlNode(Node):
 
         # Set up timer for regular position updates
         self.publisher_timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
-        self.closed_loop_speed_control_timer = self.create_timer(
-            0.05, self.motor_controller.closed_loop_control_speed)  # 20Hz update rate
 
         # Set up parameters for odometry calculation
         self.wheel_radius = 0.034  # meters
@@ -68,6 +66,8 @@ class RobotControlNode(Node):
         self.turn_speed_factor = 1.0
 
         self.motor_controller = MotorController.MotorController(self.driver, self.ticks_per_revolution)
+        self.closed_loop_speed_control_timer = self.create_timer(
+            0.05, self.motor_controller.closed_loop_control_speed)  # 20Hz update rate
 
         # Time tracking
         self.last_time = time.time()
