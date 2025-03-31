@@ -31,7 +31,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'script = rpi_comms_base.script:main',
+            'script = rpi_comms_base.script_try:main',
             'control_motors = rpi_comms_base.control_motors_sub_vel_pub_odom:main',
         ],
     },

@@ -5,6 +5,7 @@ from nav_msgs.msg import Odometry
 import time
 import math
 from . import L298nDriver
+from . import MotorController
 
 
 class RobotControlNode(Node):
@@ -61,42 +62,19 @@ class RobotControlNode(Node):
         self.theta = 0.0
 
         # Speed multiplier factor
-        self.linear_speed_factor = 0.8
-        self.turn_speed_factor = 0.8
+        self.linear_speed_factor = 1.0
+        self.turn_speed_factor = 1.0
+
+        # Desired Motors Speed
+        self.r_motor_desired_speed = 0.0
+        self.l_motor_desired_speed = 0.0
+
+        self.motor_controller = MotorController.MotorController(self.driver, self.ticks_per_revolution)
 
         # Time tracking
         self.last_time = time.time()
 
         print('Robot Control Node has been initialized')
-
-    def get_motor_speeds(self):
-        """
-        Calculate the current speed of each motor in rad/s based on encoder readings
-        over a small time delta.
-
-        Returns:
-            tuple: (right_wheel_speed, left_wheel_speed) in rad/s
-        """
-        # Get current motor positions
-        right_pos, left_pos = self.driver.get_motors_pos()
-
-        # Calculate change in encoder ticks
-        delta_right = right_pos - self.last_right_pos
-        delta_left = left_pos - self.last_left_pos
-
-        # Calculate time delta
-        current_time = time.time()
-        dt = current_time - self.last_time
-
-        # Avoid division by zero
-        if dt < 0.001:
-            return 0.0, 0.0
-
-        # Convert ticks to angular velocity (rad/s)
-        right_wheel_speed = (delta_right / self.ticks_per_revolution) * 2 * math.pi / dt
-        left_wheel_speed = (delta_left / self.ticks_per_revolution) * 2 * math.pi / dt
-
-        return right_wheel_speed, left_wheel_speed
 
     def convert_cmd_vel_to_motor_speeds(self, linear_vel, angular_vel):
         """
@@ -132,11 +110,12 @@ class RobotControlNode(Node):
     def velocity_callback(self, msg):
         print(f'Received velocity command: linear={msg.linear.x:.2f}, angular={msg.angular.z:.2f}')
 
-        right_speed_desired, left_speed_desired = self.convert_cmd_vel_to_motor_speeds(msg.linear.x, msg.angular.z)
+        self.r_motor_desired_speed, self.l_motor_desired_speed = self.convert_cmd_vel_to_motor_speeds(
+            msg.linear.x, msg.angular.z)
 
-        right_wheel_speed, left_wheel_speed = self.get_motor_speeds()
+        right_wheel_speed, left_wheel_speed = self.motor_controller.get_motor_speeds()
 
-        print('desired: ', right_speed_desired, left_speed_desired)
+        print('desired: ', self.r_motor_desired_speed, self.l_motor_desired_speed)
         print('current: ', right_wheel_speed, left_wheel_speed)
 
         # Convert received velocities to motor commands
