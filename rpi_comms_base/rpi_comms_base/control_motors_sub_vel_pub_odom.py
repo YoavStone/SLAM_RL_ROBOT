@@ -132,8 +132,8 @@ class RobotControlNode(Node):
         print('current: ', right_wheel_speed, left_wheel_speed)
 
         # Convert received velocities to motor commands
-        self.motor_controller.closed_loop_control_speed(self.r_motor_desired_speed, self.l_motor_desired_speed)
         self.convert_vel_to_motor_dir(speed, turn)
+        self.motor_controller.closed_loop_control_speed(self.r_motor_desired_speed, self.l_motor_desired_speed)
 
     def convert_vel_to_motor_dir(self, speed, turn):
         """

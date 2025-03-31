@@ -60,7 +60,7 @@ class Motor:
 
     def update_en_count(self):
         self.en_count = self.encoder.steps
-        print(f"Encoder Count: {self.en_count}")
+        # print(f"Encoder Count: {self.en_count}")
 
     def call_encoder_int(self):
         self.encoder.when_rotated = self.update_en_count

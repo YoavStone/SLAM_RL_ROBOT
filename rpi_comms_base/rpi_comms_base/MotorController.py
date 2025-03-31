@@ -15,6 +15,8 @@ class MotorController:
         self.right_wheel_speed = 0.0
         self.left_wheel_speed = 0.0
 
+        self.pwm_change_factor = 1.0
+
         self.ticks_per_revolution = ticks_per_revolution
 
         self.last_time = time.time()
@@ -58,7 +60,6 @@ class MotorController:
     def closed_loop_control_speed(self, r_motor_desired_speed, l_motor_desired_speed):
 
         if r_motor_desired_speed == 0.0 == l_motor_desired_speed:
-            self.driver.stop()
             return
 
         dt_speeds_r = r_motor_desired_speed - self.right_wheel_speed
@@ -70,14 +71,18 @@ class MotorController:
         pwm_r = self.driver.R_Motor.pwm
         pwm_l = self.driver.L_Motor.pwm
 
-        error_pwm_r = pwm_r * error_speed_r
-        error_pwm_l = pwm_l * error_speed_l
+        if pwm_r != 0.0 != pwm_l:
+            error_pwm_r = pwm_r * error_speed_r * self.pwm_change_factor
+            error_pwm_l = pwm_l * error_speed_l * self.pwm_change_factor
+        else:
+            error_pwm_r = 1.0 * error_speed_r * self.pwm_change_factor
+            error_pwm_l = 1.0 * error_speed_l * self.pwm_change_factor
 
-        new_pwm_r = max(min(1.0, pwm_r + error_pwm_r), 0.0)
-        new_pwm_l = max(min(1.0, pwm_l + error_pwm_l), 0.0)
+        new_pwm_r = abs(min(1.0, pwm_r + error_pwm_r))
+        new_pwm_l = abs(min(1.0, pwm_l + error_pwm_l))
 
         # should never happen but here just in case:
-        if new_pwm_r == 0.0 == new_pwm_l:
+        if new_pwm_r < 0.05 and new_pwm_l < 0.05:
             self.driver.stop()
             return
 
