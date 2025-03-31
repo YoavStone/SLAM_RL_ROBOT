@@ -33,11 +33,11 @@ class L298nDriver:
         self.R_Motor.forward()
         self.L_Motor.backwards()
 
-    def set_speed(self, speed):
-        if speed > 1:
-            speed = 1
-        self.R_Motor.change_speed(speed)
-        self.L_Motor.change_speed(speed)
+    def set_pwm(self, pwmR, pwmL):
+        pwmR = min(pwmR, 1.0)
+        pwmL = min(pwmL, 1.0)
+        self.R_Motor.change_pwm(pwmR)
+        self.L_Motor.change_pwm(pwmL)
 
     def call_encoder_interrupt(self):
         self.R_Motor.call_encoder_int()

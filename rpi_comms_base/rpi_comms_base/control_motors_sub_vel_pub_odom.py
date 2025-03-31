@@ -157,21 +157,21 @@ class RobotControlNode(Node):
                 self.driver.go_forward()
                 # Set speed proportionally (adjust scale as needed)
                 motor_speed = min(self.linear_speed_factor, abs(speed)*self.linear_speed_factor)
-                self.driver.set_speed(motor_speed)
+                self.driver.set_pwm(motor_speed, motor_speed)
             else:
                 self.driver.go_backwards()
                 motor_speed = min(self.linear_speed_factor, abs(speed)*self.linear_speed_factor)
-                self.driver.set_speed(motor_speed)
+                self.driver.set_pwm(motor_speed, motor_speed)
         else:
             # Primarily turning
             if turn > 0:
                 self.driver.turn_left()
                 motor_speed = min(self.turn_speed_factor, abs(turn)*self.turn_speed_factor)  # Turn might need lower speed
-                self.driver.set_speed(motor_speed)
+                self.driver.set_pwm(motor_speed, motor_speed)
             else:
                 self.driver.turn_right()
                 motor_speed = min(self.turn_speed_factor, abs(turn)*self.turn_speed_factor)
-                self.driver.set_speed(motor_speed)
+                self.driver.set_pwm(motor_speed, motor_speed)
 
     def publish_position(self):
         # Get current motor positions
