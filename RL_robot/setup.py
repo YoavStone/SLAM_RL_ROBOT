@@ -41,8 +41,12 @@ setup(
         (os.path.join(
          'share', package_name, 'robot_controller/'),
          glob(os.path.join('robot_controller/*'))),
+
+        (os.path.join(
+            'share', package_name, 'DQL/'),
+         glob(os.path.join('DQL/*'))),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'torch', 'gymnasium'],
     zip_safe=True,
     maintainer='yoav-stone',
     maintainer_email='yoav.stone@gmail.com',
@@ -53,6 +57,7 @@ setup(
         'console_scripts': [
             'follow_wall = RL_robot.follow_left_wall:main',
             'control_motors = RL_robot.command_robot:main',
+            'dqn_agent = RL_robot.dqn:main'
         ],
     },
 )
