@@ -46,7 +46,7 @@ setup(
             'share', package_name, 'DQL/'),
          glob(os.path.join('DQL/*'))),
     ],
-    install_requires=['setuptools', 'torch', 'gymnasium'],
+    install_requires=['setuptools', 'torch', 'torchvision', 'torchaudio', 'gymnasium'],
     zip_safe=True,
     maintainer='yoav-stone',
     maintainer_email='yoav.stone@gmail.com',
@@ -57,7 +57,7 @@ setup(
         'console_scripts': [
             'follow_wall = RL_robot.follow_left_wall:main',
             'control_motors = RL_robot.command_robot:main',
-            'dqn_agent = RL_robot.dqn:main'
+            'dqn_agent = DQL.run_dqn_agent:main'
         ],
     },
 )
