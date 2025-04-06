@@ -56,7 +56,15 @@ class DQLAgent:
 
         # For saving the best model
         self.best_mean_reward = -float('inf')  # Store the best mean reward
-        self.best_model_path = "best_dqn_model.pth"
+
+        # Where to save best model
+        best_model_name = "best_dqn_model.pth"
+        best_model_path = "src/RL_robot/saved_networks/network_params/"
+        self.best_model_path = best_model_path + best_model_name
+        # Where to save model video
+        vid_name = "dqn_cartpole_vid"
+        vid_path = "src/RL_robot/saved_networks/video/"
+        self.video_path = vid_path + vid_name
 
     def init_replay_buffer(self):
         obs, _ = self.env.reset()
@@ -95,7 +103,7 @@ class DQLAgent:
             if np.mean(self.reward_buffer) >= SAVE_THRESHOLD and np.mean(self.reward_buffer) > self.best_mean_reward:
                 self.best_mean_reward = np.mean(self.reward_buffer)
                 self.save_model()
-                self.save_video(path=f'dqn_cartpole{self.best_mean_reward}.gif') # save vid of best preforming model
+                self.save_video(path=f'{self.video_path}{self.best_mean_reward}.gif') # save vid of best preforming model
 
             if step % 1000 == 0:
                 print(f"\nStep: {step}")
