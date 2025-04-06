@@ -7,6 +7,9 @@ import torch.optim as optim
 import gymnasium as gym
 import numpy as np
 import imageio.v2 as imageio
+import rclpy
+from rclpy.node import Node
+import os
 
 # Hyperparameters
 GAMMA = 0.99
@@ -42,12 +45,55 @@ class DQN(nn.Module):
         return max_q_index.detach().item()
 
 
+class DQLAgentNode(Node):
+    def __init__(self):
+        super().__init__('dql_agent_node')
+
+        # ROS2 parameters
+        self.declare_parameter('learning_mode', True)
+        self.declare_parameter('model_path', '')
+
+        self.learning_mode = self.get_parameter('learning_mode').value
+        self.model_path = self.get_parameter('model_path').value
+
+        print(f"Learning mode: {self.learning_mode}")
+        print(f"Model path: {self.model_path}")
+
+        # Initialize agent
+        self.agent = DQLAgent(learning_mode=self.learning_mode, model_path=self.model_path)
+
+        # Start the agent
+        if self.learning_mode:
+            print("Starting agent in learning mode")
+            self.agent.init_replay_buffer()
+            self.agent.train()
+        else:
+            print("Starting agent in execution mode")
+            self.agent.run()
+
+
 class DQLAgent:
-    def __init__(self, env_name="CartPole-v1"):
+    def __init__(self, env_name="CartPole-v1", learning_mode=True, model_path=''):
         self.env = gym.make(env_name)
         self.q_network = DQN(self.env)
         self.target_net = DQN(self.env)
-        self.target_net.load_state_dict(self.q_network.state_dict())
+        self.learning_mode = learning_mode
+
+        # Load model if path is provided
+        if model_path and os.path.exists(model_path):
+            try:
+                self.q_network.load_state_dict(torch.load(model_path))
+                print(f"🔄 Loaded model from {model_path}")
+                # If we're in execution mode, we should also load the model to target network
+                if not learning_mode:
+                    self.target_net.load_state_dict(self.q_network.state_dict())
+            except Exception as e:
+                print(f"⚠️ Failed to load model from {model_path}: {e}")
+        else:
+            self.target_net.load_state_dict(self.q_network.state_dict())
+            if model_path:
+                print(f"⚠️ Model path {model_path} not found, starting with a fresh model")
+
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE)
 
         self.replay_buffer = deque(maxlen=BUFFER_SIZE)
@@ -67,6 +113,9 @@ class DQLAgent:
         self.video_path = vid_path + vid_name
 
     def init_replay_buffer(self):
+        if not self.learning_mode:
+            return
+
         obs, _ = self.env.reset()
         for _ in range(MIN_REPLAY_SIZE):
             action = self.env.action_space.sample()
@@ -78,6 +127,10 @@ class DQLAgent:
                 obs, _ = self.env.reset()
 
     def train(self):
+        if not self.learning_mode:
+            print("Agent is not in learning mode. Call run() instead.")
+            return
+
         obs, _ = self.env.reset()
         for step in itertools.count():
             epsilon = np.interp(step, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
@@ -103,14 +156,56 @@ class DQLAgent:
             if np.mean(self.reward_buffer) >= SAVE_THRESHOLD and np.mean(self.reward_buffer) > self.best_mean_reward:
                 self.best_mean_reward = np.mean(self.reward_buffer)
                 self.save_model()
-                self.save_video(path=f'{self.video_path}{self.best_mean_reward}.gif') # save vid of best preforming model
+                self.save_video(
+                    path=f'{self.video_path}{self.best_mean_reward}.gif')  # save vid of best performing model
 
             if step % 1000 == 0:
                 print(f"\nStep: {step}")
                 print(f"Avg reward: {np.mean(self.reward_buffer)}")
                 print(f"Epsilon: {epsilon}")
 
+    def run(self):
+        """Run the agent in execution mode (no learning)"""
+        print("Running agent in execution mode (no learning)")
+        steps = 0
+        episodes = 0
+        total_reward = 0
+
+        try:
+            while True:  # Run continuously
+                obs, _ = self.env.reset()
+                episode_reward = 0
+                done = False
+
+                while not done:
+                    action = self.q_network.act(obs)
+                    obs, reward, terminated, truncated, _ = self.env.step(action)
+                    done = terminated or truncated
+                    episode_reward += reward
+                    steps += 1
+
+                    if steps % 100 == 0:
+                        print(f"Step: {steps}, Episode: {episodes}, Current episode reward: {episode_reward}")
+
+                episodes += 1
+                total_reward += episode_reward
+                avg_reward = total_reward / episodes
+
+                print(f"\nEpisode {episodes} complete")
+                print(f"Reward: {episode_reward}")
+                print(f"Average reward: {avg_reward}")
+
+                # Optional: save video periodically
+                if episodes % 10 == 0:
+                    self.save_video(path=f'{self.video_path}_execution_{episodes}.gif')
+        except KeyboardInterrupt:
+            print("\nStopping execution mode")
+            return
+
     def learn_step(self):
+        if len(self.replay_buffer) < BATCH_SIZE:
+            return
+
         transitions = random.sample(self.replay_buffer, BATCH_SIZE)
         obs_batch = np.asarray([t[0] for t in transitions])
         act_batch = np.asarray([t[1] for t in transitions])
@@ -138,6 +233,9 @@ class DQLAgent:
         self.optimizer.step()
 
     def save_video(self, path="dqn_cartpole.gif", steps=500):
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
         env_render = gym.make("CartPole-v1", render_mode="rgb_array")
         obs, _ = env_render.reset()
         frames = []
@@ -151,14 +249,24 @@ class DQLAgent:
         print(f"🎥 Saved performance video to {path}")
 
     def save_model(self):
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self.best_model_path), exist_ok=True)
+
         torch.save(self.q_network.state_dict(), self.best_model_path)
         print(f"🏆 Saved best model at {self.best_model_path}")
 
 
-def main():
-    agent = DQLAgent()
-    agent.init_replay_buffer()
-    agent.train()
+def main(args=None):
+    rclpy.init(args=args)
+    node = DQLAgentNode()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        print("Node stopped cleanly")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":
