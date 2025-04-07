@@ -55,7 +55,7 @@ def generate_launch_description():
 
     dqn_node = Node(
         package='RL_robot',
-        executable='dqn_agent',
+        executable='cart_pole_dqn_agent',
         name='dqn_agent_node',
         output='screen',
         emulate_tty=True,

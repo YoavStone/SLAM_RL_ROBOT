@@ -57,7 +57,7 @@ setup(
         'console_scripts': [
             'follow_wall = RL_robot.follow_left_wall:main',
             'control_motors = RL_robot.command_robot:main',
-            'dqn_agent = DQL.run_dqn_agent:main'
+            'cart_pole_dqn_agent = CartPoleExample.run_dqn_agent:main'
         ],
     },
 )
