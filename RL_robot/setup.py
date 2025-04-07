@@ -43,8 +43,12 @@ setup(
          glob(os.path.join('robot_controller/*'))),
 
         (os.path.join(
-            'share', package_name, 'DQL/'),
-         glob(os.path.join('DQL/*'))),
+            'share', package_name, 'DQLRobotSLAM/'),
+         glob(os.path.join('DQLRobotSLAM/*'))),
+
+        (os.path.join(
+            'share', package_name, 'CartPoleExample/'),
+         glob(os.path.join('CartPoleExample/*'))),
     ],
     install_requires=['setuptools', 'torch', 'torchvision', 'torchaudio', 'gymnasium'],
     zip_safe=True,
@@ -57,7 +61,8 @@ setup(
         'console_scripts': [
             'follow_wall = RL_robot.follow_left_wall:main',
             'control_motors = RL_robot.command_robot:main',
-            'cart_pole_dqn_agent = CartPoleExample.run_dqn_agent:main'
+            'cart_pole_dqn_agent = CartPoleExample.run_dqn_agentTRY:main',
+            'slam_robot_dqn_agent = DQLRobotSLAM.run_dqn_agent:main'
         ],
     },
 )
