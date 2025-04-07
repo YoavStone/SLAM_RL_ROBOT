@@ -4,15 +4,15 @@ from collections import deque
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import gymnasium as gym
 import numpy as np
 import imageio.v2 as imageio
+import os
+import time
 import rclpy
 from rclpy.node import Node
-import os
 
 from .DQN import DQN
-
+from .DQL_ENV import DQLEnv
 
 # Hyperparameters
 GAMMA = 0.99
@@ -24,140 +24,196 @@ EPSILON_START = 1.0
 EPSILON_END = 0.02
 EPSILON_DECAY = 10000
 TARGET_UPDATE_FREQ = 1000
-SAVE_THRESHOLD = 400  # Threshold for saving the best model
+SAVE_THRESHOLD = 50  # Lower threshold for Gazebo environment
 
 
-class DQLAgent:
-    def __init__(self, env_name="CartPole-v1", learning_mode=True, model_path='', best_model_name="best_dqn_model.pth", vid_name="dqn_cartpole_vid"):
-        self.env = gym.make(env_name)
+class DQLAgent(Node):
+    def __init__(self, learning_mode=True, model_path='', best_model_name="best_dqn_gazebo_model.pth"):
+        super().__init__('dql_agent')
+
+        self.declare_parameter('learning_mode', learning_mode)
+        self.declare_parameter('model_path', model_path)
+        self.declare_parameter('best_model_name', best_model_name)
+
+        self.learning_mode = self.get_parameter('learning_mode').value
+        self.model_path = self.get_parameter('model_path').value
+        self.best_model_name = self.get_parameter('best_model_name').value
+
+        # Setup environment
+        self.env = DQLEnv()
+
+        # Make sure observation space is initialized
+        while self.env.observation_space is None:
+            rclpy.spin_once(self.env.gazebo_env, timeout_sec=0.1)
+            self.get_logger().info("Waiting for observation space to be initialized...")
+            time.sleep(0.5)
+
+        self.get_logger().info(f"Observation space shape: {self.env.observation_space.shape}")
+
+        # Initialize networks
         self.q_network = DQN(self.env)
         self.target_net = DQN(self.env)
-        self.learning_mode = learning_mode
 
         # Load model if path is provided
-        if model_path and os.path.exists(model_path):
+        if self.model_path and os.path.exists(self.model_path):
             try:
-                self.q_network.load_state_dict(torch.load(model_path))
-                print(f"🔄 Loaded model from {model_path}")
-                # If we're in execution mode, we should also load the model to target network
-                if not learning_mode:
+                self.q_network.load_state_dict(torch.load(self.model_path))
+                self.get_logger().info(f"🔄 Loaded model from {self.model_path}")
+                if not self.learning_mode:
                     self.target_net.load_state_dict(self.q_network.state_dict())
             except Exception as e:
-                print(f"⚠️ Failed to load model from {model_path}: {e}")
+                self.get_logger().error(f"⚠️ Failed to load model from {self.model_path}: {e}")
         else:
             self.target_net.load_state_dict(self.q_network.state_dict())
-            if model_path:
-                print(f"⚠️ Model path {model_path} not found, starting with a fresh model")
+            if self.model_path:
+                self.get_logger().warn(f"⚠️ Model path {self.model_path} not found, starting fresh")
 
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE)
 
+        # Replay and reward tracking
         self.replay_buffer = deque(maxlen=BUFFER_SIZE)
         self.reward_buffer = deque([0.0], maxlen=100)
-        self.epsilon_reward = 0.0
+        self.episode_reward = 0.0
 
         # For saving the best model
-        self.best_mean_reward = -float('inf')  # Store the best mean reward
+        self.best_mean_reward = -float('inf')
 
-        # Where to save best model
-        best_model_path = "src/RL_robot/saved_networks/network_params/"
-        self.best_model_path = best_model_path + best_model_name
-        # Where to save model video
-        vid_path = "src/RL_robot/saved_networks/video/"
-        self.video_path = vid_path + vid_name
+        # Where to save models
+        self.best_model_path = os.path.join("src/RL_robot/saved_networks/network_params/", self.best_model_name)
+        os.makedirs(os.path.dirname(self.best_model_path), exist_ok=True)
 
-    def init_replay_buffer(self):
-        if not self.learning_mode:
-            return
+        # Timer for training/execution loop
+        self.create_timer(0.01, self.timer_callback)
 
-        obs, _ = self.env.reset()
-        for _ in range(MIN_REPLAY_SIZE):
+        # State for training loop
+        self.training_initialized = False
+        self.current_obs = None
+        self.steps = 0
+        self.episode_count = 0
+
+        self.get_logger().info(f"DQL Agent initialized in {'learning' if self.learning_mode else 'execution'} mode")
+
+    def timer_callback(self):
+        """Main loop for training or execution"""
+        if self.learning_mode:
+            if not self.training_initialized:
+                self.initialize_training()
+            else:
+                self.train_step()
+        else:
+            self.execute_step()
+
+    def initialize_training(self):
+        """Initialize replay buffer before starting training"""
+        self.get_logger().info("Initializing replay buffer...")
+
+        self.current_obs, _ = self.env.reset()
+
+        # Fill replay buffer with random actions
+        while len(self.replay_buffer) < MIN_REPLAY_SIZE:
             action = self.env.action_space.sample()
             new_obs, reward, terminated, truncated, _ = self.env.step(action)
             is_done = terminated or truncated
-            self.replay_buffer.append((obs, action, reward, is_done, new_obs))
-            obs = new_obs
-            if is_done:
-                obs, _ = self.env.reset()
 
-    def train(self):
-        if not self.learning_mode:
-            print("Agent is not in learning mode. Call run() instead.")
-            return
-
-        obs, _ = self.env.reset()
-        for step in itertools.count():
-            epsilon = np.interp(step, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
-            action = self.env.action_space.sample() if random.random() < epsilon else self.q_network.act(obs)
-
-            new_obs, reward, terminated, truncated, _ = self.env.step(action)
-            is_done = terminated or truncated
-            self.replay_buffer.append((obs, action, reward, is_done, new_obs))
-            obs = new_obs
-            self.epsilon_reward += reward
+            self.replay_buffer.append((self.current_obs, action, reward, is_done, new_obs))
 
             if is_done:
-                obs, _ = self.env.reset()
-                self.reward_buffer.append(self.epsilon_reward)
-                self.epsilon_reward = 0.0
+                self.current_obs, _ = self.env.reset()
+            else:
+                self.current_obs = new_obs
 
-            self.learn_step()
+            if len(self.replay_buffer) % 100 == 0:
+                self.get_logger().info(f"Replay buffer: {len(self.replay_buffer)}/{MIN_REPLAY_SIZE}")
 
-            if step % TARGET_UPDATE_FREQ == 0:
-                self.target_net.load_state_dict(self.q_network.state_dict())
+        self.get_logger().info("Replay buffer filled, starting training")
+        self.training_initialized = True
 
-            # Save the model if the mean reward exceeds the threshold and it's the best so far
-            if np.mean(self.reward_buffer) >= SAVE_THRESHOLD and np.mean(self.reward_buffer) > self.best_mean_reward:
-                self.best_mean_reward = np.mean(self.reward_buffer)
-                self.save_model()
-                self.save_video(path=f'{self.video_path}{self.best_mean_reward}.gif')  # save vid of best performing model
+    def train_step(self):
+        """Execute one step of training"""
+        # Calculate epsilon based on steps
+        epsilon = np.interp(self.steps, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
 
-            if step % 1000 == 0:
-                print(f"\nStep: {step}")
-                print(f"Avg reward: {np.mean(self.reward_buffer)}")
-                print(f"Epsilon: {epsilon}")
+        # Choose action (epsilon-greedy)
+        if random.random() < epsilon:
+            action = self.env.action_space.sample()
+        else:
+            action = self.q_network.act(self.current_obs)
 
-    def run(self):
-        """Run the agent in execution mode (no learning)"""
-        print("Running agent in execution mode (no learning)")
-        steps = 0
-        episodes = 0
-        total_reward = 0
+        # Execute action
+        new_obs, reward, terminated, truncated, _ = self.env.step(action)
+        is_done = terminated or truncated
 
-        try:
-            while True:  # Run continuously
-                obs, _ = self.env.reset()
-                episode_reward = 0
-                done = False
+        # Store transition
+        self.replay_buffer.append((self.current_obs, action, reward, is_done, new_obs))
 
-                while not done:
-                    action = self.q_network.act(obs)
-                    obs, reward, terminated, truncated, _ = self.env.step(action)
-                    done = terminated or truncated
-                    episode_reward += reward
-                    steps += 1
+        # Update current observation
+        self.current_obs = new_obs
 
-                    if steps % 100 == 0:
-                        print(f"Step: {steps}, Episode: {episodes}, Current episode reward: {episode_reward}")
+        # Update episode reward
+        self.episode_reward += reward
 
-                episodes += 1
-                total_reward += episode_reward
-                avg_reward = total_reward / episodes
+        # Reset if episode is done
+        if is_done:
+            self.current_obs, _ = self.env.reset()
+            self.reward_buffer.append(self.episode_reward)
+            self.episode_count += 1
 
-                print(f"\nEpisode {episodes} complete")
-                print(f"Reward: {episode_reward}")
-                print(f"Average reward: {avg_reward}")
+            self.get_logger().info(
+                f"Episode {self.episode_count}: Reward={self.episode_reward:.2f}, Avg={np.mean(self.reward_buffer):.2f}")
+            self.episode_reward = 0.0
 
-                # Optional: save video periodically
-                if episodes % 10 == 0:
-                    self.save_video(path=f'{self.video_path}_execution_{episodes}.gif')
-        except KeyboardInterrupt:
-            print("\nStopping execution mode")
-            return
+        # Learn from batch
+        self.learn_step()
+
+        # Update target network periodically
+        if self.steps % TARGET_UPDATE_FREQ == 0:
+            self.target_net.load_state_dict(self.q_network.state_dict())
+            self.get_logger().info(f"Updated target network at step {self.steps}")
+
+        # Save model if performance improves
+        if len(self.reward_buffer) >= 5 and np.mean(self.reward_buffer) >= SAVE_THRESHOLD and np.mean(
+                self.reward_buffer) > self.best_mean_reward:
+            self.best_mean_reward = np.mean(self.reward_buffer)
+            self.save_model()
+
+        # Log progress
+        if self.steps % 1000 == 0:
+            self.get_logger().info(
+                f"Step: {self.steps}, Epsilon: {epsilon:.3f}, Avg reward: {np.mean(self.reward_buffer):.2f}")
+
+        self.steps += 1
+
+    def execute_step(self):
+        """Execute the trained policy without learning"""
+        if self.current_obs is None:
+            self.current_obs, _ = self.env.reset()
+            self.episode_reward = 0.0
+            self.get_logger().info("Starting new episode in execution mode")
+
+        # Choose action using trained policy
+        action = self.q_network.act(self.current_obs)
+
+        # Execute action
+        new_obs, reward, terminated, truncated, _ = self.env.step(action)
+        is_done = terminated or truncated
+
+        # Update current observation and reward
+        self.current_obs = new_obs
+        self.episode_reward += reward
+
+        # Reset if episode is done
+        if is_done:
+            self.get_logger().info(f"Episode complete, reward: {self.episode_reward:.2f}")
+            self.current_obs, _ = self.env.reset()
+            self.episode_count += 1
+            self.episode_reward = 0.0
 
     def learn_step(self):
+        """Learn from a batch of experiences"""
         if len(self.replay_buffer) < BATCH_SIZE:
             return
 
+        # Sample batch of experiences
         transitions = random.sample(self.replay_buffer, BATCH_SIZE)
         obs_batch = np.asarray([t[0] for t in transitions])
         act_batch = np.asarray([t[1] for t in transitions])
@@ -165,44 +221,31 @@ class DQLAgent:
         done_batch = np.asarray([t[3] for t in transitions])
         next_obs_batch = np.asarray([t[4] for t in transitions])
 
+        # Convert to tensors
         obs_t = torch.as_tensor(obs_batch, dtype=torch.float32)
         acts_t = torch.as_tensor(act_batch, dtype=torch.int64).unsqueeze(-1)
         rews_t = torch.as_tensor(rew_batch, dtype=torch.float32).unsqueeze(-1)
         dones_t = torch.as_tensor(done_batch, dtype=torch.float32).unsqueeze(-1)
         next_obs_t = torch.as_tensor(next_obs_batch, dtype=torch.float32)
 
+        # Compute target Q values
         with torch.no_grad():
             target_q = self.target_net(next_obs_t)
             max_target_q = target_q.max(dim=1, keepdim=True)[0]
             targets = rews_t + GAMMA * (1 - dones_t) * max_target_q
 
+        # Compute current Q values
         q_vals = self.q_network(obs_t)
         action_q_vals = torch.gather(q_vals, dim=1, index=acts_t)
 
+        # Compute loss and update
         loss = nn.functional.smooth_l1_loss(action_q_vals, targets)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-    def save_video(self, path="dqn_cartpole.gif", steps=500):
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        env_render = gym.make("CartPole-v1", render_mode="rgb_array")
-        obs, _ = env_render.reset()
-        frames = []
-        for _ in range(steps):
-            frames.append(env_render.render())
-            action = self.q_network.act(obs)
-            obs, _, term, trunc, _ = env_render.step(action)
-            if term or trunc:
-                break
-        imageio.mimsave(path, frames, fps=30)
-        print(f"🎥 Saved performance video to {path}")
-
     def save_model(self):
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(self.best_model_path), exist_ok=True)
-
+        """Save the current model"""
         torch.save(self.q_network.state_dict(), self.best_model_path)
-        print(f"🏆 Saved best model at {self.best_model_path}")
+        self.get_logger().info(
+            f"🏆 Saved best model with avg reward {self.best_mean_reward:.2f} at {self.best_model_path}")

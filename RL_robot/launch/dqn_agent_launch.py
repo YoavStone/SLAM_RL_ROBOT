@@ -1,11 +1,15 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 import os
+from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
+    pkg_dir = get_package_share_directory('RL_robot')
+    config_file = os.path.join(pkg_dir, 'DQLRobotSLAM', 'dql_params.yaml')
+
     # Launch arguments
     learning_mode = LaunchConfiguration('learning_mode')
     model_path = LaunchConfiguration('model_path')
@@ -53,21 +57,22 @@ def generate_launch_description():
         'RMW_IMPLEMENTATION': os.environ.get('RMW_IMPLEMENTATION', 'rmw_fastrtps_cpp')
     }
 
-    dqn_node = Node(
+    agent_node = Node(
         package='RL_robot',
-        executable='cart_pole_dqn_agent',
+        executable='slam_robot_dqn_agent',
         name='dqn_agent_node',
         output='screen',
         emulate_tty=True,
         env=env,
         parameters=[
             {'learning_mode': learning_mode},
-            {'model_path': model_path}
+            {'model_path': model_path},
+            {'best_model_name': 'gazebo_dql_model.pth'}
         ],
     )
 
     return LaunchDescription([
         learning_mode_arg,
         model_path_arg,
-        dqn_node
+        agent_node
     ])
