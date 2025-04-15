@@ -14,26 +14,26 @@
 </gazebo>
 
 <gazebo reference="wheel1_link">
-    <mu1>0.2</mu1>
-    <mu2>0.2</mu2>
+    <mu1>0.9</mu1>
+    <mu2>0.9</mu2>
     <material>Gazebo/Yellow</material>
 </gazebo>
 
 <gazebo reference="wheel2_link">
-    <mu1>0.2</mu1>
-    <mu2>0.2</mu2>
+    <mu1>0.9</mu1>
+    <mu2>0.9</mu2>
     <material>Gazebo/Yellow</material>
 </gazebo>
 
 <gazebo reference="caster1_link">
-    <mu1>0.000002</mu1>
-    <mu2>0.000002</mu2>
+    <mu1>0.05</mu1>
+    <mu2>0.05</mu2>
     <material>Gazebo/Blue</material>
 </gazebo>
 
 <gazebo reference="caster2_link">
-    <mu1>0.000002</mu1>
-    <mu2>0.000002</mu2>
+    <mu1>0.05</mu1>
+    <mu2>0.05</mu2>
     <material>Gazebo/Blue</material>
 </gazebo>
 
@@ -79,7 +79,7 @@
 <gazebo>
 
 <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
-    
+
     <!-- wheels -->
         <right_joint>wheel1_joint</right_joint>
         <left_joint>wheel2_joint</left_joint>
@@ -89,7 +89,10 @@
         <wheel_diameter>${2*r}</wheel_diameter>
 
     <!-- limits -->
-        <max_linear_acceleration>10</max_linear_acceleration>
+        <max_linear_acceleration>1.0</max_linear_acceleration>
+        <max_angular_acceleration>2.0</max_angular_acceleration>
+        <min_linear_acceleration>-1.0</min_linear_acceleration>
+        <min_angular_acceleration>-2.0</min_angular_acceleration>
 
     <!-- topic, frames and odometry -->
         <topic>cmd_vel</topic>

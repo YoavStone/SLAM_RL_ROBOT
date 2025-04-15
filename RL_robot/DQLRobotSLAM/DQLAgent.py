@@ -44,11 +44,15 @@ class DQLAgent(Node):
 
         # Make sure observation space is initialized
         while self.env.observation_space is None:
-            rclpy.spin_once(self.env.gazebo_env, timeout_sec=0.1)
-            self.get_logger().info("Waiting for observation space to be initialized...")
-            time.sleep(0.5)
+            if self.env.update_observation_space():
+                print("Observation space initialized successfully!")
+                break
+            else:
+                rclpy.spin_once(self.env.gazebo_env, timeout_sec=0.1)
+                print("Waiting for observation space to be initialized...")
+                time.sleep(0.5)
 
-        self.get_logger().info(f"Observation space shape: {self.env.observation_space.shape}")
+        print(f"Observation space shape: {self.env.observation_space.shape}")
 
         # Initialize networks
         self.q_network = DQN(self.env)
@@ -123,9 +127,9 @@ class DQLAgent(Node):
                 self.current_obs = new_obs
 
             if len(self.replay_buffer) % 100 == 0:
-                self.get_logger().info(f"Replay buffer: {len(self.replay_buffer)}/{MIN_REPLAY_SIZE}")
+                print(f"Replay buffer: {len(self.replay_buffer)}/{MIN_REPLAY_SIZE}")
 
-        self.get_logger().info("Replay buffer filled, starting training")
+        print("Replay buffer filled, starting training")
         self.training_initialized = True
 
     def train_step(self):
@@ -168,7 +172,7 @@ class DQLAgent(Node):
         # Update target network periodically
         if self.steps % TARGET_UPDATE_FREQ == 0:
             self.target_net.load_state_dict(self.q_network.state_dict())
-            self.get_logger().info(f"Updated target network at step {self.steps}")
+            print(f"Updated target network at step {self.steps}")
 
         # Save model if performance improves
         if len(self.reward_buffer) >= 5 and np.mean(self.reward_buffer) >= SAVE_THRESHOLD and np.mean(
@@ -178,8 +182,7 @@ class DQLAgent(Node):
 
         # Log progress
         if self.steps % 1000 == 0:
-            self.get_logger().info(
-                f"Step: {self.steps}, Epsilon: {epsilon:.3f}, Avg reward: {np.mean(self.reward_buffer):.2f}")
+            print(f"Step: {self.steps}, Epsilon: {epsilon:.3f}, Avg reward: {np.mean(self.reward_buffer):.2f}")
 
         self.steps += 1
 
@@ -188,7 +191,7 @@ class DQLAgent(Node):
         if self.current_obs is None:
             self.current_obs, _ = self.env.reset()
             self.episode_reward = 0.0
-            self.get_logger().info("Starting new episode in execution mode")
+            print("Starting new episode in execution mode")
 
         # Choose action using trained policy
         action = self.q_network.act(self.current_obs)

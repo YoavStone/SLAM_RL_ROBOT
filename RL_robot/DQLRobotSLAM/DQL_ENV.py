@@ -13,8 +13,10 @@ from gymnasium import spaces
 # Constants
 CONTINUES_PUNISHMENT = -2  # amount of punishment for every sec wasted
 HIT_WALL_PUNISHMENT = -200
-LINEAR_SPEED = 0.3  # m/s
-ANGULAR_SPEED = 0.3  # rad/s
+CLOSE_TO_WALL_PUNISHMENT = -5
+
+LINEAR_SPEED = 1.0  # irl: 0.3  # m/s
+ANGULAR_SPEED = 2.0  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
@@ -24,9 +26,10 @@ class GazeboEnv(Node):
         super().__init__('gazebo_env_node')
 
         # Robot properties
-        self.rad_of_robot = rad_of_robot * 1.6  # radius from lidar to tip with safety margin
+        self.rad_of_robot = rad_of_robot * 1.3  # radius from lidar to tip with safety margin
 
         # Environment state
+        self.previous_map = None
         self.map_processed = []  # Processed map data for DQL input
         self.pos = [0.0, 0.0, 0.0]  # [orientation, x, y]
         self.measured_distance_to_walls = [10.0] * 8  # distances in eighths of circle
@@ -53,7 +56,7 @@ class GazeboEnv(Node):
         # Timer for environment update (0.1 second interval)
         self.timer = self.create_timer(0.1, self.update_timer_callback)
 
-        self.get_logger().info('Gazebo Environment Node initialized')
+        print('Gazebo Environment Node initialized')
 
     def scan_callback(self, msg):
         """Process laser scan data"""
@@ -80,62 +83,86 @@ class GazeboEnv(Node):
         # Extract position
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
-
-        # Extract orientation (yaw) from quaternion
-        qx = msg.pose.pose.orientation.x
-        qy = msg.pose.pose.orientation.y
-        qz = msg.pose.pose.orientation.z
-        qw = msg.pose.pose.orientation.w
-
-        # Convert quaternion to Euler angles
-        siny_cosp = 2.0 * (qw * qz + qx * qy)
-        cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
-        yaw = math.atan2(siny_cosp, cosy_cosp)
+        yaw = msg.pose.pose.orientation.z
 
         self.pos = [yaw, x, y]
         self.odom_ready = True
 
     def map_callback(self, msg):
-        """Process SLAM map data"""
-        # Process the occupancy grid to extract relevant features
+        """Process SLAM map data by cropping a 6m x 6m area centered on the robot's position"""
+        # Store raw map data
+        self.map_raw = msg
+
+        # Extract map metadata
+        resolution = msg.info.resolution  # Typically 0.05m or similar. for me now its 0.15m
         width = msg.info.width
         height = msg.info.height
+        origin_x = msg.info.origin.position.x
+        origin_y = msg.info.origin.position.y
 
-        # Downsample the map to a manageable size (e.g., 10x10 grid)
-        downsampled_size = 10
-        step_x = max(1, width // downsampled_size)
-        step_y = max(1, height // downsampled_size)
+        # Calculate size of 6m x 6m area in grid cells (maintaining resolution)
+        crop_size_meters = 6.0  # 6m x 6m area
+        crop_size_cells = int(crop_size_meters / resolution)
 
-        downsampled_map = []
-        for y in range(0, height, step_y):
-            for x in range(0, width, step_x):
+        # If robot position isn't available yet, use the center of the map
+        if not self.odom_ready:
+            robot_cell_x = width // 2
+            robot_cell_y = height // 2
+        else:
+            # Convert robot position to grid cell coordinates
+            robot_cell_x = int((self.pos[1] - origin_x) / resolution)
+            robot_cell_y = int((self.pos[2] - origin_y) / resolution)
+
+        # Calculate boundaries for cropping (ensuring we don't go out of bounds)
+        half_size = crop_size_cells // 2
+        min_x = max(0, robot_cell_x - half_size)
+        min_y = max(0, robot_cell_y - half_size)
+        max_x = min(width, robot_cell_x + half_size)
+        max_y = min(height, robot_cell_y + half_size)
+
+        # Calculate actual dimensions of cropped area
+        actual_width = max_x - min_x
+        actual_height = max_y - min_y
+
+        # Crop the map
+        cropped_map = []
+        for y in range(min_y, max_y):
+            for x in range(min_x, max_x):
                 idx = y * width + x
                 if idx < len(msg.data):
-                    # Normalize to [0, 1], where -1 (unknown) becomes 0.5
+                    # Keep unknown as -1, normalize 0-100 scale to 0-1
                     if msg.data[idx] == -1:  # Unknown
-                        downsampled_map.append(0.5)
+                        cropped_map.append(-1.0)
                     else:  # 0-100 scale to 0-1
-                        downsampled_map.append(float(msg.data[idx]) / 100.0)
+                        cropped_map.append(float(msg.data[idx]) / 100.0)
+                else:
+                    # Out of bounds, mark as unknown
+                    cropped_map.append(-1.0)
 
-        # Pad or truncate to ensure consistent size
-        target_size = downsampled_size * downsampled_size
-        if len(downsampled_map) < target_size:
-            downsampled_map.extend([0.5] * (target_size - len(downsampled_map)))
-        elif len(downsampled_map) > target_size:
-            downsampled_map = downsampled_map[:target_size]
+        # Ensure consistent size by padding or truncating
+        target_size = crop_size_cells * crop_size_cells
+        if len(cropped_map) < target_size:
+            cropped_map.extend([-1.0] * (target_size - len(cropped_map)))
+        elif len(cropped_map) > target_size:
+            cropped_map = cropped_map[:target_size]
 
-        self.map_processed = downsampled_map
+        self.map_processed = cropped_map
         self.map_ready = True
 
+        # Log info about the cropped map
+        # print(f"Cropped map: {actual_width}x{actual_height} cells " + f"at position ({min_x}, {min_y}) from original {width}x{height}")
+
         # Initialize observation space if not already done
+        # print("obs space: ", self.observation_space)
+        print("updated map")
         if self.observation_space is None:
-            obs_size = len(self.get_state())
+            obs_size = len(self.get_state())  # next lines define max and min of each value in the obs space. note: 4 and not math.pi because there is a chance for a slight error
             self.observation_space = spaces.Box(
-                low=np.array([-math.pi, -100, -100] + [0] * 8 + [0] * len(self.map_processed)),
-                high=np.array([math.pi, 100, 100] + [10] * 8 + [1] * len(self.map_processed)),
+                low=np.array([-4, -100, -100] + [0] * 8 + [-1] * len(self.map_processed)),
+                high=np.array([4, 100, 100] + [10] * 8 + [1] * len(self.map_processed)),
                 dtype=np.float32
             )
-            self.get_logger().info(f"Observation space initialized with size {obs_size}")
+            print(f"Observation space initialized with size {obs_size}")
 
     def update_timer_callback(self):
         """Timer callback to update environment state at 10Hz (0.1 seconds)"""
@@ -148,10 +175,8 @@ class GazeboEnv(Node):
                 self.map_processed, self.pos, self.measured_distance_to_walls, dt
             )
 
-            # In a real implementation, you would send this state back to your agent
-            # For demonstration, we'll just log it
             if is_terminated:
-                self.get_logger().info("Environment terminated (hit wall)")
+                print("Environment terminated (hit wall)")
 
     def action_to_cmd(self, action):
         """Convert action index to Twist command"""
@@ -187,19 +212,56 @@ class GazeboEnv(Node):
         """Get the number of possible actions"""
         return len(self.actions)
 
-    def calc_reward(self, time_from_last_env_update, new_dis, new_map):
-        """Calculate reward based on time spent and proximity to walls"""
-        reward = CONTINUES_PUNISHMENT * time_from_last_env_update
+    def dis_to_wall_to_punishment(self, dt, new_dis):
+        punishment = 0
         closest = min(new_dis)
         is_terminated = False
 
         if closest < self.rad_of_robot:  # Robot is too close to a wall
-            reward += HIT_WALL_PUNISHMENT
+            punishment += HIT_WALL_PUNISHMENT
             is_terminated = True
+        elif closest < self.rad_of_robot*1.3:  # if close but not too close slight punishment
+            punishment = (CLOSE_TO_WALL_PUNISHMENT/(closest**3))*dt
 
+        return punishment, is_terminated
+
+    def change_in_map_to_reward(self, new_map):
+        """Calculate reward based on newly discovered map cells"""
+        # Skip if we don't have a previous map to compare
+        if not hasattr(self, 'previous_map') or self.previous_map is None:
+            self.previous_map = new_map.copy()
+            return 0
+
+        # Count newly discovered cells (changed from -1 to any other value)
+        reward = 0
+        for i in range(len(new_map)):
+            if i < len(self.previous_map):
+                # Cell was unknown (-1) and is now known
+                if self.previous_map[i] == -1 and new_map[i] != -1:
+                    reward += 0.5  # Reward for each newly discovered cell
+
+        # Store current map for next comparison
+        self.previous_map = new_map.copy()
+
+        return reward
+
+    def calc_reward(self, time_from_last_env_update, new_dis, new_map):
+        """Calculate reward based on time spent, proximity to walls, and exploration"""
+        reward = CONTINUES_PUNISHMENT * time_from_last_env_update
+
+        # punishment for being close to walls
+        pun, is_terminated = self.dis_to_wall_to_punishment(time_from_last_env_update, new_dis)
+        reward += pun
+
+        if is_terminated:  # Robot is too close to a wall
             # Stop the robot when it hits a wall
             stop_cmd = Twist()
             self.cmd_vel_pub.publish(stop_cmd)
+            return reward, is_terminated
+
+        # reward for exploring new areas
+        exploration_reward = self.change_in_map_to_reward(new_map)
+        reward += exploration_reward
 
         return reward, is_terminated
 
@@ -235,7 +297,7 @@ class GazeboEnv(Node):
         while not (self.scan_ready and self.odom_ready and self.map_ready):
             rclpy.spin_once(self, timeout_sec=0.1)
             if time.time() - start_time > timeout:
-                self.get_logger().warn("Timeout waiting for sensor data during reset")
+                print("Timeout waiting for sensor data during reset")
                 break
 
         self.last_update_time = time.time()
@@ -254,8 +316,8 @@ class DQLEnv:
         for _ in range(10):
             rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
 
-        # Set up gym-compatible interface
-        self.observation_space = self.gazebo_env.observation_space
+        # Don't try to access observation_space directly yet
+        self.observation_space = None
         self.action_space = self.gazebo_env.action_space
 
         # Properties needed by DQL agent
@@ -270,6 +332,12 @@ class DQLEnv:
 
     def get_state(self):
         return self.gazebo_env.get_state()
+
+    def update_observation_space(self):
+        if self.gazebo_env.observation_space is not None:
+            self.observation_space = self.gazebo_env.observation_space
+            return True
+        return False
 
     def step(self, action):
         """Execute action and get new state, reward, etc. (gym-like interface)"""
@@ -288,6 +356,9 @@ class DQLEnv:
             self.gazebo_env.measured_distance_to_walls,
             self.gazebo_env.map_processed
         )
+
+        if reward != CONTINUES_PUNISHMENT*0.1:  # log if reward is not static
+            print("reward_t: ", reward, "is_terminated: ", terminated)
 
         return new_state, reward, terminated, False, {}  # state, reward, terminated, truncated, info
 
