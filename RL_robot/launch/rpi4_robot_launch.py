@@ -19,7 +19,7 @@ def generate_launch_description():
 
     # Async toolbox SLAM parameters file
     absPathParamSLAM = os.path.join(get_package_share_directory(namePackage),
-                                    'robot_controller/mapper_params_online_async.yaml')
+                                    'parameters/mapper_params_online_async.yaml')
 
     slam_toolbox_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(

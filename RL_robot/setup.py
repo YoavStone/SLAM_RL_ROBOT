@@ -39,8 +39,8 @@ setup(
          glob(os.path.join('rviz/*'))),
 
         (os.path.join(
-         'share', package_name, 'robot_controller/'),
-         glob(os.path.join('robot_controller/*'))),
+         'share', package_name, 'sim_control/'),
+         glob(os.path.join('sim_control/*'))),
 
         (os.path.join(
             'share', package_name, 'DQLRobotSLAM/'),
@@ -69,6 +69,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'asymmetric_velocity_controller = sim_control.asymmetric_velocity_controller:main',
             'follow_wall = RL_robot.follow_left_wall:main',
             'control_motors = RL_robot.command_robot:main',
             'cart_pole_dqn_agent = CartPoleExample.run_dqn_agentTRY:main',

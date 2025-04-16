@@ -8,6 +8,8 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.actions import SetEnvironmentVariable
+from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument
 
 from launch_ros.actions import Node
 import xacro
@@ -54,7 +56,7 @@ def generate_launch_description():
 
 
     # Async toolbox SLAM parameters file
-    absPathParamSLAM = os.path.join(get_package_share_directory(namePackage), 'robot_controller/mapper_params_online_async.yaml')
+    absPathParamSLAM = os.path.join(get_package_share_directory(namePackage), 'parameters/mapper_params_online_async.yaml')
 
     slam_toolbox_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')]),
@@ -108,10 +110,26 @@ def generate_launch_description():
         output = 'screen',
     )
 
+    sim_vel_control_node = Node(
+        package='RL_robot',
+        executable='asymmetric_velocity_controller',
+        name='asymmetric_velocity_controller',
+        output='screen',
+        # Optional: Add parameters if you want to configure values from launch file
+        parameters=[{
+            'max_linear_accel': 1.5,
+            'max_linear_decel': 0.5,
+            'max_angular_accel': 3.0,
+            'max_angular_decel': 1.0,
+            'rate_hz': 50.0,
+        }],
+    )
+
     # empty launch description object
     launchDescriptionObject = LaunchDescription()
 
     # add gazeboLaunch
+    launchDescriptionObject.add_action(sim_vel_control_node)
     launchDescriptionObject.add_action(set_gz_model_path)
     launchDescriptionObject.add_action(gazeboLaunch)
 
