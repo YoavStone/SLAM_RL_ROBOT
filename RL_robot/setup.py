@@ -49,6 +49,16 @@ setup(
         (os.path.join(
             'share', package_name, 'CartPoleExample/'),
          glob(os.path.join('CartPoleExample/*'))),
+
+        (os.path.join('share', package_name, 'worlds'),
+         glob(os.path.join('worlds/*'))),
+        # All subfolders of models (e.g., models/room_walls/*)
+        *[
+            (os.path.join('share', package_name, 'models', os.path.basename(d)),
+             glob(os.path.join(d, '*')))
+            for d in glob('models/*') if os.path.isdir(d)
+        ],
+
     ],
     install_requires=['setuptools', 'torch', 'torchvision', 'torchaudio', 'gymnasium'],
     zip_safe=True,

@@ -162,8 +162,7 @@ class DQLAgent(Node):
             self.reward_buffer.append(self.episode_reward)
             self.episode_count += 1
 
-            self.get_logger().info(
-                f"Episode {self.episode_count}: Reward={self.episode_reward:.2f}, Avg={np.mean(self.reward_buffer):.2f}")
+            print(f"Episode {self.episode_count}: Reward={self.episode_reward:.2f}, Avg={np.mean(self.reward_buffer):.2f}")
             self.episode_reward = 0.0
 
         # Learn from batch
@@ -206,7 +205,7 @@ class DQLAgent(Node):
 
         # Reset if episode is done
         if is_done:
-            self.get_logger().info(f"Episode complete, reward: {self.episode_reward:.2f}")
+            print(f"Episode complete, reward: {self.episode_reward:.2f}")
             self.current_obs, _ = self.env.reset()
             self.episode_count += 1
             self.episode_reward = 0.0

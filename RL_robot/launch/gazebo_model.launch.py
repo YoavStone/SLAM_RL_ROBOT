@@ -7,6 +7,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import SetEnvironmentVariable
 
 from launch_ros.actions import Node
 import xacro
@@ -33,11 +34,15 @@ def generate_launch_description():
     # launch file from gazebo_ros pkg
     gazebo_rosPackageLaunch = PythonLaunchDescriptionSource(os.path.join(
         get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py'))
-    
 
 
+    gz_model_path = os.path.join(get_package_share_directory(namePackage), 'models')
+    set_gz_model_path = SetEnvironmentVariable(
+        name='GZ_SIM_RESOURCE_PATH',
+        value=gz_model_path
+    )
     # Path to world.sdf file
-    worldFileRelativePath = 'worlds/world_try.sdf'
+    worldFileRelativePath = 'worlds/AI_Training_World.sdf'
 
     # absolute path to world.sdf
     pathWorldFile = os.path.join(get_package_share_directory(namePackage), worldFileRelativePath)
@@ -107,6 +112,7 @@ def generate_launch_description():
     launchDescriptionObject = LaunchDescription()
 
     # add gazeboLaunch
+    launchDescriptionObject.add_action(set_gz_model_path)
     launchDescriptionObject.add_action(gazeboLaunch)
 
     # add the nodes

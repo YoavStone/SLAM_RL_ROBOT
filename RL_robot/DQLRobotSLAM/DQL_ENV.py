@@ -13,7 +13,8 @@ from gymnasium import spaces
 # Constants
 CONTINUES_PUNISHMENT = -2  # amount of punishment for every sec wasted
 HIT_WALL_PUNISHMENT = -200
-CLOSE_TO_WALL_PUNISHMENT = -5
+CLOSE_TO_WALL_PUNISHMENT = -0.1
+EXPLORATION_REWARD = 1.0
 
 LINEAR_SPEED = 1.0  # irl: 0.3  # m/s
 ANGULAR_SPEED = 2.0  # irl: 0.3  # rad/s
@@ -221,14 +222,14 @@ class GazeboEnv(Node):
             punishment += HIT_WALL_PUNISHMENT
             is_terminated = True
         elif closest < self.rad_of_robot*1.3:  # if close but not too close slight punishment
-            punishment = (CLOSE_TO_WALL_PUNISHMENT/(closest**3))*dt
+            punishment = (CLOSE_TO_WALL_PUNISHMENT/(closest-self.rad_of_robot)**2)*dt
 
         return punishment, is_terminated
 
     def change_in_map_to_reward(self, new_map):
         """Calculate reward based on newly discovered map cells"""
         # Skip if we don't have a previous map to compare
-        if not hasattr(self, 'previous_map') or self.previous_map is None:
+        if self.previous_map is None:
             self.previous_map = new_map.copy()
             return 0
 
@@ -238,7 +239,7 @@ class GazeboEnv(Node):
             if i < len(self.previous_map):
                 # Cell was unknown (-1) and is now known
                 if self.previous_map[i] == -1 and new_map[i] != -1:
-                    reward += 0.5  # Reward for each newly discovered cell
+                    reward += EXPLORATION_REWARD  # Reward for each newly discovered cell
 
         # Store current map for next comparison
         self.previous_map = new_map.copy()

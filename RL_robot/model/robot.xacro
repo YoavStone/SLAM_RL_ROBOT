@@ -23,7 +23,7 @@
 <!-- Wheels Dimensions -->
 <!-- r = wheels && caster radius -->
 <!-- w = wheels width -->
-<xacro:property name="r" value="0.034"/>
+<xacro:property name="r" value="0.08"/>
 <xacro:property name="w" value="0.028"/>
 
 <!-- Lengths to centers -->
