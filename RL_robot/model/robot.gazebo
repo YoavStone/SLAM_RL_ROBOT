@@ -86,7 +86,7 @@
 
     <!-- kinematics -->
         <wheel_separation>${2*s2}</wheel_separation>
-        <wheel_diameter>${2*r}</wheel_diameter>
+        <wheel_radius>${r}</wheel_radius>
 
     <!-- limits -->
         <max_linear_acceleration>2.0</max_linear_acceleration>

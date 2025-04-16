@@ -16,8 +16,8 @@ HIT_WALL_PUNISHMENT = -200
 CLOSE_TO_WALL_PUNISHMENT = -0.1
 EXPLORATION_REWARD = 1.0
 
-LINEAR_SPEED = 1.0  # irl: 0.3  # m/s
-ANGULAR_SPEED = 2.0  # irl: 0.3  # rad/s
+LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
+ANGULAR_SPEED = 0.3*2  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
@@ -258,11 +258,16 @@ class GazeboEnv(Node):
             # Stop the robot when it hits a wall
             stop_cmd = Twist()
             self.cmd_vel_pub.publish(stop_cmd)
+            if reward != CONTINUES_PUNISHMENT * 0.1:  # log if reward is not static
+                print("reward_t: ", reward, "is_terminated: ", is_terminated)
             return reward, is_terminated
 
         # reward for exploring new areas
         exploration_reward = self.change_in_map_to_reward(new_map)
         reward += exploration_reward
+
+        if reward != CONTINUES_PUNISHMENT*0.1:  # log if reward is not static
+            print("reward_t: ", reward, "is_terminated: ", is_terminated)
 
         return reward, is_terminated
 
@@ -357,9 +362,6 @@ class DQLEnv:
             self.gazebo_env.measured_distance_to_walls,
             self.gazebo_env.map_processed
         )
-
-        if reward != CONTINUES_PUNISHMENT*0.1:  # log if reward is not static
-            print("reward_t: ", reward, "is_terminated: ", terminated)
 
         return new_state, reward, terminated, False, {}  # state, reward, terminated, truncated, info
 
