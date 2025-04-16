@@ -1,25 +1,45 @@
-#############################################################
-#     ROS2 && Gazebo Launch File of the diff drive robot    #
-#############################################################
-
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.actions import SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 
 from launch_ros.actions import Node
 import xacro
 
 
 def generate_launch_description():
+    # Add launch argument for DQN agent
+    launch_dqn = LaunchConfiguration('launch_dqn')
+    launch_dqn_arg = DeclareLaunchArgument(
+        'launch_dqn',
+        default_value='false',
+        description='Whether to launch the DQN agent (true) or not (false)'
+    )
+
+    # DQN-related launch arguments
+    learning_mode = LaunchConfiguration('learning_mode')
+    model_path = LaunchConfiguration('model_path')
+
+    learning_mode_arg = DeclareLaunchArgument(
+        'learning_mode',
+        default_value='true',
+        description='Whether the agent is in learning mode (true) or execution mode (false)'
+    )
+
+    model_path_arg = DeclareLaunchArgument(
+        'model_path',
+        default_value='',
+        description='Path to a saved model to load. If empty, starts with a fresh model.'
+    )
 
     # name in xacro file
     robotXacroName = 'mapping_robot'
-    
+
     # pkg name to define the paths
     namePackage = 'RL_robot'
 
@@ -32,11 +52,9 @@ def generate_launch_description():
     # get robot description from xacro model file && combine with .gazebo
     robotDescription = xacro.process_file(pathModelFile).toxml()
 
-
     # launch file from gazebo_ros pkg
     gazebo_rosPackageLaunch = PythonLaunchDescriptionSource(os.path.join(
         get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py'))
-
 
     gz_model_path = os.path.join(get_package_share_directory(namePackage), 'models')
     set_gz_model_path = SetEnvironmentVariable(
@@ -51,45 +69,43 @@ def generate_launch_description():
 
     # Gazebo
     gazeboLaunch = IncludeLaunchDescription(gazebo_rosPackageLaunch, launch_arguments=
-        {'gz_args': [f'-r -v -v4 {pathWorldFile}'], 'on_exit_shutdown': 'true'}.items())
-
-
+    {'gz_args': [f'-r -v -v4 {pathWorldFile}'], 'on_exit_shutdown': 'true'}.items())
 
     # Async toolbox SLAM parameters file
-    absPathParamSLAM = os.path.join(get_package_share_directory(namePackage), 'parameters/mapper_params_online_async.yaml')
+    absPathParamSLAM = os.path.join(get_package_share_directory(namePackage),
+                                    'parameters/mapper_params_online_async.yaml')
 
     slam_toolbox_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')]),
+        PythonLaunchDescriptionSource(
+            [os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')]),
         launch_arguments={'use_sim_time': 'true', 'slam_params_file': absPathParamSLAM}.items()
     )
-    
 
     # RViz
     rviz = Node(
-       package='rviz2',
-       executable='rviz2',
-       arguments=['-d', os.path.join(get_package_share_directory(namePackage), 'rviz', 'gpu_lidar_bridge.rviz')],
+        package='rviz2',
+        executable='rviz2',
+        arguments=['-d', os.path.join(get_package_share_directory(namePackage), 'rviz', 'gpu_lidar_bridge.rviz')],
     )
-
 
     # Spawn model GZ node
     spawnModelNodeGazebo = Node(
-        package = 'ros_gz_sim',
-        executable = 'create',
-        arguments = [
+        package='ros_gz_sim',
+        executable='create',
+        arguments=[
             '-name', robotXacroName,
             '-topic', 'robot_description'
         ],
-        output = 'screen',
+        output='screen',
     )
 
     # Robot State Publisher node
     nodeRobotStatePublisher = Node(
-        package = 'robot_state_publisher',
-        executable = 'robot_state_publisher',
-        output = 'screen',
-        parameters = [{'robot_description': robotDescription,
-        'use_sim_time': True}]
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[{'robot_description': robotDescription,
+                     'use_sim_time': True}]
     )
 
     # to control robot from ROS2
@@ -100,14 +116,14 @@ def generate_launch_description():
     )
 
     start_gazebo_ros_bridge_cmd = Node(
-        package = 'ros_gz_bridge',
-        executable = 'parameter_bridge',
-        arguments = [
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=[
             '--ros-args',
             '-p',
             f'config_file:={bridge_params}',
         ],
-        output = 'screen',
+        output='screen',
     )
 
     sim_vel_control_node = Node(
@@ -125,8 +141,25 @@ def generate_launch_description():
         }],
     )
 
+    # Include the DQN agent launch file conditionally
+    dqn_agent_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory(namePackage), 'launch', 'slam_dqn_agent_launch.py')
+        ]),
+        condition=IfCondition(launch_dqn),
+        launch_arguments={
+            'learning_mode': learning_mode,
+            'model_path': model_path
+        }.items()
+    )
+
     # empty launch description object
     launchDescriptionObject = LaunchDescription()
+
+    # Add the launch arguments
+    launchDescriptionObject.add_action(launch_dqn_arg)
+    launchDescriptionObject.add_action(learning_mode_arg)
+    launchDescriptionObject.add_action(model_path_arg)
 
     # add gazeboLaunch
     launchDescriptionObject.add_action(sim_vel_control_node)
@@ -141,5 +174,8 @@ def generate_launch_description():
     launchDescriptionObject.add_action(rviz)
 
     launchDescriptionObject.add_action(slam_toolbox_launch)
+
+    # Add the DQN agent launch file (conditional)
+    launchDescriptionObject.add_action(dqn_agent_launch)
 
     return launchDescriptionObject
