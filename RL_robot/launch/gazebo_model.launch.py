@@ -187,8 +187,8 @@ def generate_launch_description():
     launchDescriptionObject.add_action(nodeRobotStatePublisher)
     launchDescriptionObject.add_action(start_gazebo_ros_bridge_cmd)
 
-    launchDescriptionObject.add_action(teleport_service_node)
-    launchDescriptionObject.add_action(reset_handler_node)
+    # launchDescriptionObject.add_action(teleport_service_node)
+    # launchDescriptionObject.add_action(reset_handler_node)
 
     launchDescriptionObject.add_action(rviz)
 

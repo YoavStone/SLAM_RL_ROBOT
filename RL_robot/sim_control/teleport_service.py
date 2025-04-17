@@ -1,174 +1,213 @@
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, TransformStamped
-from geometry_msgs.msg import PoseWithCovarianceStamped
-from tf2_ros import TransformBroadcaster
-from nav_msgs.msg import Odometry
-import math
-import time
+from geometry_msgs.msg import Pose, Twist
 import subprocess
+import time
+import math
 
 
-class TeleportService(Node):
-    """Service to teleport the robot in Gazebo Harmonic"""
+class HarmonicDiffDriveTeleporter(Node):
+    """Teleporter specifically for differential drive robots in Gazebo Harmonic"""
 
     def __init__(self):
-        super().__init__('teleport_service')
+        super().__init__('harmonic_teleporter')
 
-        # Create necessary publishers
-        self.initial_pose_pub = self.create_publisher(
-            PoseWithCovarianceStamped,
-            '/initialpose',
+        # Robot name
+        self.robot_name = 'mapping_robot'
+        self.declare_parameter('robot_name', 'mapping_robot')
+        self.robot_name = self.get_parameter('robot_name').value
+
+        # Create subscription for teleport requests
+        self.teleport_sub = self.create_subscription(
+            Pose,
+            '/teleport_robot',
+            self.teleport_callback,
             10
         )
 
+        # Publisher for velocity commands
         self.cmd_vel_pub = self.create_publisher(
             Twist,
             'cmd_vel',
             10
         )
 
-        # For directly publishing to odometry (force reset)
-        self.odom_pub = self.create_publisher(
-            Odometry,
-            'odom',
-            10
-        )
+        # Get entity ID for the robot
+        self.entity_id = self.get_entity_id()
 
-        # TF broadcaster
-        self.tf_broadcaster = TransformBroadcaster(self)
+        self.get_logger().info("Harmonic DiffDrive teleporter initialized")
 
-        self.get_logger().info('Teleport service initialized')
-
-    def broadcast_tf(self, x, y, yaw):
-        """Broadcast TF transform for the robot position"""
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'map'
-        t.child_frame_id = 'base_link'
-
-        # Set translation
-        t.transform.translation.x = x
-        t.transform.translation.y = y
-        t.transform.translation.z = 0.0
-
-        # Set rotation (quaternion)
-        t.transform.rotation.z = math.sin(yaw / 2)
-        t.transform.rotation.w = math.cos(yaw / 2)
-
-        # Broadcast the transform
-        self.tf_broadcaster.sendTransform(t)
-
-    def teleport_robot(self, x, y, yaw=0.0):
-        """Teleportation for Gazebo Harmonic using alternative methods"""
+    def get_entity_id(self):
+        """Get the entity ID for the robot in Gazebo Harmonic"""
         try:
-            # For Gazebo Harmonic, we'll use a combination of approaches
+            # List all entities in the world
+            result = subprocess.run(['gz', 'sim', '-e', '--entity-name', self.robot_name],
+                                    capture_output=True, text=True, timeout=2.0)
 
-            # Approach 1: Try using the gz command line tool for teleportation
-            model_name = 'mapping_robot'  # Your robot's name in Gazebo
-            try:
-                cmd = [
-                    'gz', 'model', '-m', model_name,
-                    '-p', f'{x},{y},0.05',  # x,y,z
-                    '-o', f'0,0,{yaw}'  # roll,pitch,yaw
-                ]
-                subprocess.run(cmd, timeout=1.0)
-                self.get_logger().info(f"Used gz command line to teleport to ({x}, {y}, {yaw})")
-            except Exception as e:
-                self.get_logger().warn(f"gz command failed: {e}, trying alternative methods")
+            if result.returncode == 0 and result.stdout.strip():
+                # Parse entity ID from output
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    if self.robot_name in line:
+                        parts = line.split()
+                        if len(parts) >= 1:
+                            entity_id = parts[0]
+                            self.get_logger().info(f"Found robot entity ID: {entity_id}")
+                            return entity_id
 
-            # Approach 2: Use initialpose (works with navigation stack)
-            pose_msg = PoseWithCovarianceStamped()
-            pose_msg.header.frame_id = "map"
-            pose_msg.header.stamp = self.get_clock().now().to_msg()
+            # Fallback approach - try model list
+            model_result = subprocess.run(['gz', 'model', '-l'],
+                                          capture_output=True, text=True, timeout=2.0)
 
-            # Set position
-            pose_msg.pose.pose.position.x = x
-            pose_msg.pose.pose.position.y = y
-            pose_msg.pose.pose.position.z = 0.0
+            if model_result.returncode == 0:
+                models = model_result.stdout.strip().split('\n')
+                for i, model in enumerate(models):
+                    if self.robot_name in model:
+                        self.get_logger().info(f"Found robot with model ID: {i}")
+                        return str(i)
 
-            # Set orientation as quaternion
-            pose_msg.pose.pose.orientation.z = math.sin(yaw / 2)
-            pose_msg.pose.pose.orientation.w = math.cos(yaw / 2)
+            self.get_logger().warn(f"Could not find entity ID for {self.robot_name}, using default '1'")
+            return "1"  # Default entity ID if not found
 
-            # Set covariance (very low uncertainty)
-            for i in range(36):
-                pose_msg.pose.covariance[i] = 0.0
-            pose_msg.pose.covariance[0] = 0.001  # x
-            pose_msg.pose.covariance[7] = 0.001  # y
-            pose_msg.pose.covariance[35] = 0.001  # yaw
-
-            # Publish multiple times with delays
-            for _ in range(10):
-                self.initial_pose_pub.publish(pose_msg)
-                time.sleep(0.05)
-
-            self.get_logger().info(f'Robot teleport via initialpose to ({x}, {y}, {yaw})')
-
-            # Approach 3: Force odometry reset
-            odom_msg = Odometry()
-            odom_msg.header.frame_id = "odom"
-            odom_msg.header.stamp = self.get_clock().now().to_msg()
-            odom_msg.child_frame_id = "base_link"
-
-            # Set position
-            odom_msg.pose.pose.position.x = x
-            odom_msg.pose.pose.position.y = y
-            odom_msg.pose.pose.position.z = 0.0
-
-            # Set orientation
-            odom_msg.pose.pose.orientation.z = math.sin(yaw / 2)
-            odom_msg.pose.pose.orientation.w = math.cos(yaw / 2)
-
-            # Set covariance (low uncertainty)
-            for i in range(36):
-                odom_msg.pose.covariance[i] = 0.0
-            odom_msg.pose.covariance[0] = 0.01  # x
-            odom_msg.pose.covariance[7] = 0.01  # y
-            odom_msg.pose.covariance[35] = 0.01  # yaw
-
-            # Set zero velocity
-            odom_msg.twist.twist.linear.x = 0.0
-            odom_msg.twist.twist.linear.y = 0.0
-            odom_msg.twist.twist.linear.z = 0.0
-            odom_msg.twist.twist.angular.x = 0.0
-            odom_msg.twist.twist.angular.y = 0.0
-            odom_msg.twist.twist.angular.z = 0.0
-
-            # Publish multiple times to ensure it gets through
-            for _ in range(5):
-                self.odom_pub.publish(odom_msg)
-                time.sleep(0.1)
-
-            # Approach 4: Direct TF broadcast
-            for _ in range(10):
-                self.broadcast_tf(x, y, yaw)
-                time.sleep(0.05)
-
-            # Approach 5: Publish stop commands to ensure robot doesn't move
-            stop_cmd = Twist()
-            for _ in range(5):
-                self.cmd_vel_pub.publish(stop_cmd)
-                time.sleep(0.05)
-
-            self.get_logger().info(f'Completed teleport sequence for ({x}, {y}, {yaw})')
-            return True
         except Exception as e:
-            self.get_logger().error(f'Error teleporting robot: {str(e)}')
-            return False
+            self.get_logger().error(f"Error getting entity ID: {e}")
+            return "1"  # Default entity ID if not found
+
+    def teleport_callback(self, msg):
+        """Handle teleport request with Gazebo Harmonic ECS approach"""
+        x = msg.position.x
+        y = msg.position.y
+        z = msg.position.z if msg.position.z > 0 else 0.05
+
+        # Calculate yaw from quaternion
+        qz = msg.orientation.z
+        qw = msg.orientation.w
+
+        if abs(qw) < 0.001:
+            yaw = math.copysign(math.pi / 2, qz)
+        else:
+            yaw = 2.0 * math.atan2(qz, qw)
+
+        self.get_logger().info(f"Teleporting robot to x={x}, y={y}, z={z}, yaw={yaw}")
+
+        # Stop the robot first
+        stop_cmd = Twist()
+        for _ in range(5):
+            self.cmd_vel_pub.publish(stop_cmd)
+            time.sleep(0.05)
+
+        # Try multiple teleportation methods:
+
+        # Method 1: Use the gz entity pose command with entity ID
+        try:
+            if self.entity_id:
+                entity_cmd = ['gz', 'sim', '-e', self.entity_id, '--pose', f'{x},{y},{z},{0},{0},{yaw}']
+
+                self.get_logger().info(f"Running entity pose command: {' '.join(entity_cmd)}")
+
+                entity_result = subprocess.run(entity_cmd, capture_output=True, text=True, timeout=5.0)
+
+                if entity_result.returncode == 0:
+                    self.get_logger().info("Entity pose command successful")
+                else:
+                    self.get_logger().error(f"Entity pose command failed: {entity_result.stderr}")
+        except Exception as e:
+            self.get_logger().error(f"Error running entity pose command: {e}")
+
+        # Method 2: Try direct link teleportation for all robot links
+        try:
+            # Get all links for the robot
+            links_cmd = ['gz', 'model', '-m', self.robot_name, '--link']
+
+            links_result = subprocess.run(links_cmd, capture_output=True, text=True, timeout=2.0)
+
+            if links_result.returncode == 0 and links_result.stdout.strip():
+                links = [line.strip() for line in links_result.stdout.strip().split('\n')
+                         if line.strip() and not line.startswith('-')]
+
+                self.get_logger().info(f"Found robot links: {links}")
+
+                # Try to teleport each link
+                for link in links:
+                    link_cmd = ['gz', 'model', '-m', self.robot_name,
+                                '--link', link,
+                                '--pose', f'{x} {y} {z} 0 0 {yaw}']
+
+                    self.get_logger().info(f"Teleporting link {link}: {' '.join(link_cmd)}")
+
+                    link_result = subprocess.run(link_cmd, capture_output=True, text=True, timeout=2.0)
+
+                    if link_result.returncode == 0:
+                        self.get_logger().info(f"Link {link} teleport successful")
+                    else:
+                        self.get_logger().warn(f"Link {link} teleport failed: {link_result.stderr}")
+            else:
+                self.get_logger().warn("Could not get robot links")
+
+        except Exception as e:
+            self.get_logger().error(f"Error teleporting links: {e}")
+
+        # Method 3: Try direct world pose command
+        try:
+            world_cmd = ['gz', 'sim', '-w', '--pose-model',
+                         f'{self.robot_name}@{x},{y},{z},{0},{0},{yaw}']
+
+            self.get_logger().info(f"Running world pose command: {' '.join(world_cmd)}")
+
+            world_result = subprocess.run(world_cmd, capture_output=True, text=True, timeout=5.0)
+
+            if world_result.returncode == 0:
+                self.get_logger().info("World pose command successful")
+            else:
+                self.get_logger().error(f"World pose command failed: {world_result.stderr}")
+
+        except Exception as e:
+            self.get_logger().error(f"Error running world pose command: {e}")
+
+        # Force the robot to stop again
+        for _ in range(5):
+            self.cmd_vel_pub.publish(stop_cmd)
+            time.sleep(0.05)
+
+        # Final check
+        try:
+            # Get current robot pose
+            pose_cmd = ['gz', 'model', '-m', self.robot_name, '-p']
+            pose_result = subprocess.run(pose_cmd, capture_output=True, text=True, timeout=2.0)
+
+            if pose_result.returncode == 0:
+                current_pose = pose_result.stdout.strip()
+                self.get_logger().info(f"Final robot pose: {current_pose}")
+
+                # Check if position changed
+                if not current_pose or '-0.000' in current_pose.split('\n')[1]:
+                    self.get_logger().warn("Robot position unchanged - teleportation failed")
+
+                    # Provide instructions for SDF modification
+                    self.get_logger().info("To fix this, try modifying your robot's model SDF to disable dynamics:")
+                    self.get_logger().info("1. Find your robot's SDF file")
+                    self.get_logger().info("2. For each link, add <static>true</static> or disable gravity")
+                    self.get_logger().info("3. Or implement virtual teleportation in your RL algorithm")
+                else:
+                    self.get_logger().info("Robot position appears to have changed - teleportation successful!")
+
+            else:
+                self.get_logger().warn(f"Could not verify final position: {pose_result.stderr}")
+
+        except Exception as e:
+            self.get_logger().error(f"Error checking final position: {e}")
 
 
 def main(args=None):
     rclpy.init(args=args)
-
-    teleport_service = TeleportService()
+    teleporter = HarmonicDiffDriveTeleporter()
 
     try:
-        rclpy.spin(teleport_service)
+        rclpy.spin(teleporter)
     except KeyboardInterrupt:
         pass
     finally:
-        teleport_service.destroy_node()
+        teleporter.destroy_node()
         rclpy.shutdown()
 
 
