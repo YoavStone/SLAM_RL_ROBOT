@@ -16,8 +16,8 @@ HIT_WALL_PUNISHMENT = -200
 CLOSE_TO_WALL_PUNISHMENT = -0.1
 EXPLORATION_REWARD = 1.0
 
-LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
-ANGULAR_SPEED = 0.3*2  # irl: 0.3  # rad/s
+LINEAR_SPEED = 0.0  # irl: 0.3  # m/s
+ANGULAR_SPEED = 0.0*2  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
@@ -38,6 +38,12 @@ class GazeboEnv(Node):
 
         # Action space: stop, forward, back, right, left
         self.actions = [0, 1, 2, 3, 4]
+
+        # Termination indications
+        self.episode_start_time = time.time()
+        self.total_cells = None
+        self.explored_threshold = 0.05  # 5%
+        self.max_episode_duration = 120  # seconds
 
         # Publishers and subscribers
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
@@ -150,6 +156,9 @@ class GazeboEnv(Node):
         self.map_processed = cropped_map
         self.map_ready = True
 
+        if self.total_cells is None:
+            self.total_cells = len(cropped_map)
+
         # Log info about the cropped map
         # print(f"Cropped map: {actual_width}x{actual_height} cells " + f"at position ({min_x}, {min_y}) from original {width}x{height}")
 
@@ -213,6 +222,12 @@ class GazeboEnv(Node):
         """Get the number of possible actions"""
         return len(self.actions)
 
+    def percent_explored(self):
+        if self.total_cells is None or len(self.previous_map) == 0:
+            return 0.0
+        known_cells = sum(1 for val in self.previous_map if val != -1.0)
+        return known_cells / self.total_cells
+
     def dis_to_wall_to_punishment(self, dt, new_dis):
         punishment = 0
         closest = min(new_dis)
@@ -221,8 +236,10 @@ class GazeboEnv(Node):
         if closest < self.rad_of_robot:  # Robot is too close to a wall
             punishment += HIT_WALL_PUNISHMENT
             is_terminated = True
-        elif closest < self.rad_of_robot*1.3:  # if close but not too close slight punishment
+        elif self.rad_of_robot+0.007 < closest < self.rad_of_robot*1.3:  # if close but not too close slight punishment
             punishment = (CLOSE_TO_WALL_PUNISHMENT/(closest-self.rad_of_robot)**2)*dt
+        elif self.rad_of_robot+0.007 > closest:
+            punishment = HIT_WALL_PUNISHMENT
 
         return punishment, is_terminated
 
@@ -246,6 +263,19 @@ class GazeboEnv(Node):
 
         return reward
 
+    def check_time_and_map_completion(self):
+        # Check map exploration condition
+        explored_percent = self.percent_explored()
+        if explored_percent <= self.explored_threshold:
+            print(f"Terminating: only {explored_percent * 100:.2f}% of map explored")
+            return True
+
+        # Check time-based termination
+        elapsed = time.time() - self.episode_start_time
+        if elapsed > self.max_episode_duration:
+            print(f"Terminating: episode ran for {elapsed:.1f}s")
+            return True
+
     def calc_reward(self, time_from_last_env_update, new_dis, new_map):
         """Calculate reward based on time spent, proximity to walls, and exploration"""
         reward = CONTINUES_PUNISHMENT * time_from_last_env_update
@@ -266,7 +296,10 @@ class GazeboEnv(Node):
         exploration_reward = self.change_in_map_to_reward(new_map)
         reward += exploration_reward
 
-        if reward != CONTINUES_PUNISHMENT*0.1:  # log if reward is not static
+        if self.check_time_and_map_completion():
+            is_terminated = True
+
+        if reward != CONTINUES_PUNISHMENT * time_from_last_env_update:  # log if reward is not static
             print("reward_t: ", reward, "is_terminated: ", is_terminated)
 
         return reward, is_terminated
@@ -307,6 +340,7 @@ class GazeboEnv(Node):
                 break
 
         self.last_update_time = time.time()
+        self.episode_start_time = time.time()
         return self.get_state(), {}  # Return state and empty info dict (gym-like interface)
 
 
