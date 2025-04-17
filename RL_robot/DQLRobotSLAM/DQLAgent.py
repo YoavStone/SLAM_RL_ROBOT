@@ -10,6 +10,7 @@ import os
 import time
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import Empty
 
 from .DQN import DQN
 from .DQL_ENV import DQLEnv
@@ -30,6 +31,8 @@ SAVE_THRESHOLD = 50  # Lower threshold for Gazebo environment
 class DQLAgent(Node):
     def __init__(self, learning_mode=True, model_path='', best_model_name="best_dqn_gazebo_model.pth"):
         super().__init__('dql_agent')
+
+        self.episode_end_pub = self.create_publisher(Empty, 'episode_end', 10)
 
         self.declare_parameter('learning_mode', learning_mode)
         self.declare_parameter('model_path', model_path)
@@ -165,6 +168,8 @@ class DQLAgent(Node):
             print(f"Episode {self.episode_count}: Reward={self.episode_reward:.2f}, Avg={np.mean(self.reward_buffer):.2f}")
             self.episode_reward = 0.0
 
+            self.episode_end_pub.publish(Empty())  # trigger reset environment
+
         # Learn from batch
         self.learn_step()
 
@@ -209,6 +214,8 @@ class DQLAgent(Node):
             self.current_obs, _ = self.env.reset()
             self.episode_count += 1
             self.episode_reward = 0.0
+
+            self.episode_end_pub.publish(Empty())  # trigger reset environment
 
     def learn_step(self):
         """Learn from a batch of experiences"""
