@@ -19,7 +19,7 @@ GAMMA = 0.99
 LEARNING_RATE = 5e-4
 BATCH_SIZE = 32
 BUFFER_SIZE = 50000
-MIN_REPLAY_SIZE = 1000
+MIN_REPLAY_SIZE = 100
 EPSILON_START = 1.0
 EPSILON_END = 0.02
 EPSILON_DECAY = 10000
@@ -158,6 +158,7 @@ class DQLAgent(Node):
 
         # Reset if episode is done
         if is_done:
+            print(f"Episode terminated, resetting environment...")
             self.current_obs, _ = self.env.reset()
             self.reward_buffer.append(self.episode_reward)
             self.episode_count += 1

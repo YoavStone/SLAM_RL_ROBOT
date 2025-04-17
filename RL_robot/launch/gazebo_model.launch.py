@@ -1,9 +1,8 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, OpaqueFunction
+from launch.actions import IncludeLaunchDescription, OpaqueFunction, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.actions import SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
@@ -131,7 +130,7 @@ def generate_launch_description():
         executable='asymmetric_velocity_controller',
         name='asymmetric_velocity_controller',
         output='screen',
-        # Optional: Add parameters if you want to configure values from launch file
+        # Optional: parameters to configure values from launch file
         parameters=[{
             'max_linear_accel': 1.5,
             'max_linear_decel': 0.5,
@@ -139,6 +138,23 @@ def generate_launch_description():
             'max_angular_decel': 1.0,
             'rate_hz': 50.0,
         }],
+    )
+
+    # Teleport service node
+    teleport_service_node = Node(
+        condition=IfCondition(launch_dqn),
+        package='RL_robot',
+        executable='teleport_service',
+        name='teleport_service',
+        output='screen',
+    )
+
+    reset_handler_node = Node(
+        condition=IfCondition(launch_dqn),
+        package='RL_robot',
+        executable='reset_handler',
+        name='reset_handler',
+        output='screen',
     )
 
     # Include the DQN agent launch file conditionally
@@ -170,6 +186,9 @@ def generate_launch_description():
     launchDescriptionObject.add_action(spawnModelNodeGazebo)
     launchDescriptionObject.add_action(nodeRobotStatePublisher)
     launchDescriptionObject.add_action(start_gazebo_ros_bridge_cmd)
+
+    launchDescriptionObject.add_action(teleport_service_node)
+    launchDescriptionObject.add_action(reset_handler_node)
 
     launchDescriptionObject.add_action(rviz)
 

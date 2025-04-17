@@ -2,13 +2,15 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid, Odometry
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Pose, Point, Quaternion, TransformStamped, PoseWithCovarianceStamped
+from gymnasium import spaces
 import numpy as np
 import time
 import math
 import torch
-from gymnasium import spaces
-
+import random
+import tf2_ros
+from std_msgs.msg import Empty as EmptyMsg
 
 # Constants
 CONTINUES_PUNISHMENT = -2  # amount of punishment for every sec wasted
@@ -17,7 +19,16 @@ CLOSE_TO_WALL_PUNISHMENT = -0.1
 EXPLORATION_REWARD = 1.0
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
-ANGULAR_SPEED = 0.3*2  # irl: 0.3  # rad/s
+ANGULAR_SPEED = 0.3 * 2  # irl: 0.3  # rad/s
+
+# Predefined spawn positions
+SPAWN_POSITIONS = [
+    (0.0, 0.0),  # center
+    (6.3, 0.0),  # right
+    (-6.3, 0.0),  # left
+    (0.0, 6.3),  # top
+    (0.0, -6.3)  # bottom
+]
 
 
 class GazeboEnv(Node):
@@ -28,6 +39,7 @@ class GazeboEnv(Node):
 
         # Robot properties
         self.rad_of_robot = rad_of_robot * 1.3  # radius from lidar to tip with safety margin
+        self.model_name = 'mapping_robot'  # name of the robot model in Gazebo
 
         # Environment state
         self.previous_map = None
@@ -45,6 +57,15 @@ class GazeboEnv(Node):
         self.odom_sub = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
         self.map_sub = self.create_subscription(OccupancyGrid, 'map', self.map_callback, 10)
 
+        # Reset request publisher (to external reset handler)
+        self.reset_request_pub = self.create_publisher(EmptyMsg, '/environment_reset_request', 10)
+
+        # Publishers for robot teleportation
+        self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
+
+        # TF2 broadcaster for updating robot position in RViz
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+
         # Gym-like interface variables
         self.observation_space = None  # Will be initialized after first data is received
         self.action_space = spaces.Discrete(len(self.actions))
@@ -53,6 +74,10 @@ class GazeboEnv(Node):
         self.scan_ready = False
         self.odom_ready = False
         self.map_ready = False
+
+        # Store the latest map for checking changes
+        self.latest_map = None
+        self.episode_count = 0
 
         # Timer for environment update (0.1 second interval)
         self.timer = self.create_timer(0.1, self.update_timer_callback)
@@ -93,6 +118,7 @@ class GazeboEnv(Node):
         """Process SLAM map data by cropping a 6m x 6m area centered on the robot's position"""
         # Store raw map data
         self.map_raw = msg
+        self.latest_map = msg  # Store for reset purposes
 
         # Extract map metadata
         resolution = msg.info.resolution  # Typically 0.05m or similar. for me now its 0.15m
@@ -150,14 +176,10 @@ class GazeboEnv(Node):
         self.map_processed = cropped_map
         self.map_ready = True
 
-        # Log info about the cropped map
-        # print(f"Cropped map: {actual_width}x{actual_height} cells " + f"at position ({min_x}, {min_y}) from original {width}x{height}")
-
         # Initialize observation space if not already done
-        # print("obs space: ", self.observation_space)
-        print("updated map")
         if self.observation_space is None:
-            obs_size = len(self.get_state())  # next lines define max and min of each value in the obs space. note: 4 and not math.pi because there is a chance for a slight error
+            obs_size = len(
+                self.get_state())  # next lines define max and min of each value in the obs space. note: 4 and not math.pi because there is a chance for a slight error
             self.observation_space = spaces.Box(
                 low=np.array([-4, -100, -100] + [0] * 8 + [-1] * len(self.map_processed)),
                 high=np.array([4, 100, 100] + [10] * 8 + [1] * len(self.map_processed)),
@@ -221,8 +243,8 @@ class GazeboEnv(Node):
         if closest < self.rad_of_robot:  # Robot is too close to a wall
             punishment += HIT_WALL_PUNISHMENT
             is_terminated = True
-        elif closest < self.rad_of_robot*1.3:  # if close but not too close slight punishment
-            punishment = (CLOSE_TO_WALL_PUNISHMENT/(closest-self.rad_of_robot)**2)*dt
+        elif closest < self.rad_of_robot * 1.3:  # if close but not too close slight punishment
+            punishment = (CLOSE_TO_WALL_PUNISHMENT / (closest - self.rad_of_robot) ** 2) * dt
 
         return punishment, is_terminated
 
@@ -266,7 +288,7 @@ class GazeboEnv(Node):
         exploration_reward = self.change_in_map_to_reward(new_map)
         reward += exploration_reward
 
-        if reward != CONTINUES_PUNISHMENT*0.1:  # log if reward is not static
+        if reward != CONTINUES_PUNISHMENT * 0.1:  # log if reward is not static
             print("reward_t: ", reward, "is_terminated: ", is_terminated)
 
         return reward, is_terminated
@@ -280,34 +302,203 @@ class GazeboEnv(Node):
         new_state = self.get_state()
         return new_state, reward, is_terminated
 
-    def reset(self):
-        """Reset the environment - in Gazebo this would typically involve resetting the simulation"""
-        # This is a placeholder - in a real implementation you would:
-        # 1. Call a service to reset the Gazebo simulation
-        # 2. Wait for new data from sensors
-        # 3. Return the initial state
+    def request_slam_reset(self):
+        """Request SLAM map reset via the external handler"""
+        self.get_logger().info("Requesting SLAM map reset from handler")
+        self.reset_request_pub.publish(EmptyMsg())
+        # Wait a moment for reset to take effect
+        time.sleep(1.0)
+        self.previous_map = None  # Reset our internal map tracking
+        return True
 
-        # For now, we'll just wait for fresh data
+    def teleport_robot(self, x, y, yaw=0.0):
+        """Teleport the robot by publishing to initialpose and using direct commands"""
+        try:
+            # Approach 1: Try using the gz command line tool for teleportation
+            model_name = 'mapping_robot'  # Your robot's name in Gazebo
+            try:
+                import subprocess
+                cmd = [
+                    'gz', 'model', '-m', model_name,
+                    '-p', f'{x},{y},0.05',  # x,y,z
+                    '-o', f'0,0,{yaw}'  # roll,pitch,yaw
+                ]
+                subprocess.run(cmd, timeout=1.0)
+                self.get_logger().info(f"Used gz command line to teleport to ({x}, {y}, {yaw})")
+            except Exception as e:
+                self.get_logger().warn(f"gz command failed: {e}, trying alternative methods")
+
+            # Approach 2: Create PoseWithCovarianceStamped message
+            pose_msg = PoseWithCovarianceStamped()
+            pose_msg.header.frame_id = "map"
+            pose_msg.header.stamp = self.get_clock().now().to_msg()
+
+            # Set position
+            pose_msg.pose.pose.position.x = x
+            pose_msg.pose.pose.position.y = y
+            pose_msg.pose.pose.position.z = 0.0
+
+            # Set orientation as quaternion
+            pose_msg.pose.pose.orientation.z = math.sin(yaw / 2)
+            pose_msg.pose.pose.orientation.w = math.cos(yaw / 2)
+
+            # Set covariance (low uncertainty)
+            for i in range(36):
+                pose_msg.pose.covariance[i] = 0.0
+            pose_msg.pose.covariance[0] = 0.001  # x
+            pose_msg.pose.covariance[7] = 0.001  # y
+            pose_msg.pose.covariance[35] = 0.001  # yaw
+
+            # Publish multiple times to ensure it gets through
+            for _ in range(10):
+                self.initial_pose_pub.publish(pose_msg)
+                time.sleep(0.05)
+
+                # Also publish stop commands
+                stop_cmd = Twist()
+                self.cmd_vel_pub.publish(stop_cmd)
+
+                # Update TF
+                self.broadcast_tf(x, y, yaw)
+
+            # Force odometry reset
+            odom_msg = Odometry()
+            odom_msg.header.frame_id = "odom"
+            odom_msg.header.stamp = self.get_clock().now().to_msg()
+            odom_msg.child_frame_id = "base_link"
+
+            # Set position
+            odom_msg.pose.pose.position.x = x
+            odom_msg.pose.pose.position.y = y
+            odom_msg.pose.pose.position.z = 0.0
+
+            # Set orientation
+            odom_msg.pose.pose.orientation.z = math.sin(yaw / 2)
+            odom_msg.pose.pose.orientation.w = math.cos(yaw / 2)
+
+            # Set covariance (low uncertainty)
+            for i in range(36):
+                odom_msg.pose.covariance[i] = 0.0
+            odom_msg.pose.covariance[0] = 0.001  # x
+            odom_msg.pose.covariance[7] = 0.001  # y
+            odom_msg.pose.covariance[35] = 0.001  # yaw
+
+            # Set zero velocity
+            odom_msg.twist.twist.linear.x = 0.0
+            odom_msg.twist.twist.linear.y = 0.0
+            odom_msg.twist.twist.linear.z = 0.0
+            odom_msg.twist.twist.angular.x = 0.0
+            odom_msg.twist.twist.angular.y = 0.0
+            odom_msg.twist.twist.angular.z = 0.0
+
+            # Publish multiple times to ensure it gets through
+            odom_pub = self.create_publisher(Odometry, 'odom', 10)
+            for _ in range(5):
+                odom_pub.publish(odom_msg)
+                time.sleep(0.05)
+
+            self.get_logger().info(f'Robot teleport request sent to ({x}, {y}, {yaw})')
+            return True
+        except Exception as e:
+            self.get_logger().error(f'Error teleporting robot: {str(e)}')
+            return False
+
+    def broadcast_tf(self, x, y, yaw):
+        """Broadcast TF transform for the new robot position"""
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'map'
+        t.child_frame_id = 'base_link'
+
+        # Set translation
+        t.transform.translation.x = x
+        t.transform.translation.y = y
+        t.transform.translation.z = 0.0
+
+        # Set rotation (quaternion)
+        t.transform.rotation.z = math.sin(yaw / 2)
+        t.transform.rotation.w = math.cos(yaw / 2)
+
+        # Broadcast the transform
+        self.tf_broadcaster.sendTransform(t)
+
+    def reset(self):
+        """Reset the environment with better timing for SLAM restart"""
+        self.episode_count += 1
+        self.get_logger().info(f"Resetting environment for episode {self.episode_count}...")
+
+        # Send stop command to robot
+        stop_cmd = Twist()
+        self.cmd_vel_pub.publish(stop_cmd)
+
+        # Request SLAM reset from external handler
+        self.get_logger().info("Requesting SLAM map reset from handler")
+        self.reset_request_pub.publish(EmptyMsg())
+
+        # Give SLAM time to restart (increased from 1.0 to 3.0 seconds)
+        self.get_logger().info("Waiting for SLAM to restart...")
+        time.sleep(3.0)
+
+        # Select a random spawn position
+        spawn_pos = random.choice(SPAWN_POSITIONS)
+        x, y = spawn_pos
+        yaw = random.uniform(-3.14, 3.14)  # Random orientation
+
+        # Call teleport service instead of doing teleportation here
+        teleport_request = EmptyMsg()
+        # This assumes you've created a service client for teleportation
+        # If not, you could create one here
+
+        # As a fallback, do direct teleportation if you can't communicate with teleport service
+        self.get_logger().info(f"Attempting to teleport robot to ({x}, {y}, {yaw})")
+        result = self.teleport_robot(x, y, yaw)
+        if not result:
+            self.get_logger().warn("Direct teleportation failed, trying alternative method...")
+            # Implement alternative teleport method here
+
+        # Additional delay to let teleportation take effect
+        time.sleep(1.0)
+
+        # Wait for data to be ready
+        timeout = 10.0
+        start_time = time.time()
+        self.get_logger().info("Waiting for sensor data after reset...")
+
+        # Reset flags to wait for fresh data
         self.scan_ready = False
         self.odom_ready = False
         self.map_ready = False
 
-        # Send stop command
-        stop_cmd = Twist()
-        self.cmd_vel_pub.publish(stop_cmd)
-
-        # Wait for new data
-        timeout = 5.0  # seconds
-        start_time = time.time()
-
+        # More active waiting with periodic progress reports
+        spinner_count = 0
         while not (self.scan_ready and self.odom_ready and self.map_ready):
             rclpy.spin_once(self, timeout_sec=0.1)
+            spinner_count += 1
+
+            # Log progress periodically
+            if spinner_count % 10 == 0:
+                self.get_logger().info(
+                    f"Still waiting for data: scan={self.scan_ready}, odom={self.odom_ready}, map={self.map_ready}")
+
+            # Check timeout
             if time.time() - start_time > timeout:
-                print("Timeout waiting for sensor data during reset")
+                self.get_logger().warn("Timeout waiting for sensor data during reset")
                 break
 
+        # Even if we timed out, proceed with current state
         self.last_update_time = time.time()
-        return self.get_state(), {}  # Return state and empty info dict (gym-like interface)
+        self.get_logger().info("Environment reset complete")
+
+        # Force a TF update one more time
+        self.broadcast_tf(x, y, yaw)
+
+        return self.get_state(), {}  # Return state and empty info dict
+
+    def close(self):
+        """Clean up resources"""
+        # Send stop command to robot
+        stop_cmd = Twist()
+        self.cmd_vel_pub.publish(stop_cmd)
 
 
 class DQLEnv:
