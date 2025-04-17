@@ -423,86 +423,76 @@ class GazeboEnv(Node):
         self.tf_broadcaster.sendTransform(t)
 
     def reset(self):
-        """Reset the environment with improved teleportation and SLAM reset"""
+        """Reset the environment with better timing for SLAM restart"""
         self.episode_count += 1
         self.get_logger().info(f"Resetting environment for episode {self.episode_count}...")
 
         # Send stop command to robot
         stop_cmd = Twist()
-        for _ in range(3):
-            self.cmd_vel_pub.publish(stop_cmd)
-            time.sleep(0.05)
+        self.cmd_vel_pub.publish(stop_cmd)
 
         # Request SLAM reset from external handler
         self.get_logger().info("Requesting SLAM map reset from handler")
         self.reset_request_pub.publish(EmptyMsg())
 
-        # Wait for SLAM reset to complete
-        time.sleep(1.0)
+        # Give SLAM time to restart (increased from 1.0 to 3.0 seconds)
+        self.get_logger().info("Waiting for SLAM to restart...")
+        time.sleep(3.0)
 
         # Select a random spawn position
         spawn_pos = random.choice(SPAWN_POSITIONS)
         x, y = spawn_pos
         yaw = random.uniform(-3.14, 3.14)  # Random orientation
 
-        # Use the dedicated teleport publisher
-        teleport_pub = self.create_publisher(Pose, '/teleport_robot', 10)
+        # Call teleport service instead of doing teleportation here
+        teleport_request = EmptyMsg()
+        # This assumes you've created a service client for teleportation
+        # If not, you could create one here
 
-        # Create teleport message
-        pose_msg = Pose()
-        pose_msg.position.x = x
-        pose_msg.position.y = y
-        pose_msg.position.z = 0.05
-        pose_msg.orientation.z = math.sin(yaw / 2)
-        pose_msg.orientation.w = math.cos(yaw / 2)
+        # As a fallback, do direct teleportation if you can't communicate with teleport service
+        self.get_logger().info(f"Attempting to teleport robot to ({x}, {y}, {yaw})")
+        result = self.teleport_robot(x, y, yaw)
+        if not result:
+            self.get_logger().warn("Direct teleportation failed, trying alternative method...")
+            # Implement alternative teleport method here
 
-        # Publish teleport request multiple times to ensure delivery
-        self.get_logger().info(f"Requesting teleportation to ({x}, {y}, {yaw})")
-        for _ in range(5):
-            teleport_pub.publish(pose_msg)
-            time.sleep(0.1)
-
-        # Force our state tracking to update, since teleportation might not work
-        self.pos = [yaw, x, y]
-
-        # Wait a moment for teleportation to take effect
+        # Additional delay to let teleportation take effect
         time.sleep(1.0)
 
-        # Wait for sensor data
-        timeout = 5.0  # Reduced timeout
+        # Wait for data to be ready
+        timeout = 10.0
         start_time = time.time()
         self.get_logger().info("Waiting for sensor data after reset...")
 
         # Reset flags to wait for fresh data
         self.scan_ready = False
         self.odom_ready = False
-        # Don't wait for map_ready, it might take too long
+        self.map_ready = False
 
+        # More active waiting with periodic progress reports
         spinner_count = 0
-        while not (self.scan_ready and self.odom_ready):  # Only wait for scan and odom
+        while not (self.scan_ready and self.odom_ready and self.map_ready):
             rclpy.spin_once(self, timeout_sec=0.1)
             spinner_count += 1
 
+            # Log progress periodically
             if spinner_count % 10 == 0:
                 self.get_logger().info(
                     f"Still waiting for data: scan={self.scan_ready}, odom={self.odom_ready}, map={self.map_ready}")
 
+            # Check timeout
             if time.time() - start_time > timeout:
                 self.get_logger().warn("Timeout waiting for sensor data during reset")
                 break
 
-        # Even if teleportation didn't work, we'll set our internal state to where we want it
-        # so the agent can learn as if teleportation worked
+        # Even if we timed out, proceed with current state
         self.last_update_time = time.time()
         self.get_logger().info("Environment reset complete")
 
-        # Initialize empty map data if necessary
-        if not self.map_ready and len(self.map_processed) == 0:
-            map_size = self.observation_space.shape[0] - len(self.pos) - len(self.measured_distance_to_walls)
-            self.map_processed = [-1.0] * map_size
-            self.get_logger().warn(f"Using empty map data of size {map_size}")
+        # Force a TF update one more time
+        self.broadcast_tf(x, y, yaw)
 
-        return self.get_state(), {}
+        return self.get_state(), {}  # Return state and empty info dict
 
     def close(self):
         """Clean up resources"""
