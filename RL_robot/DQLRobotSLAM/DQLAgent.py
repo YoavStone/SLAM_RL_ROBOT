@@ -263,23 +263,7 @@ class DQLAgent(Node):
             )
 
             # --- Save Current Episode Model ---
-            try:
-                episode_model_name = f"episode_{self.episode_count}_reward_{self.episode_reward:.2f}_dqn_model.pth"
-                episode_model_path = os.path.join(self.episode_model_dir, episode_model_name)
-                torch.save(self.q_network.state_dict(), episode_model_path)
-                # self.get_logger().info(f"💾 Saved episode model to {episode_model_path}") # Log less verbosely
-            except Exception as e:
-                self.get_logger().error(f"🔥 Failed to save episode model {episode_model_name}: {e}")
-
-
-            # --- Save Best Model if Current Episode is Better ---
-            if self.episode_reward > self.best_episode_reward:
-                 self.best_episode_reward = self.episode_reward
-                 try:
-                     torch.save(self.q_network.state_dict(), self.best_model_path)
-                     self.get_logger().info(f"🏆 Saved NEW BEST model! Episode: {self.episode_count}, Reward: {self.best_episode_reward:.2f}. Path: {self.best_model_path}")
-                 except Exception as e:
-                     self.get_logger().error(f"🔥 Failed to save new best model: {e}")
+            self.save_models()
 
             # Reset for next episode
             self.current_obs, _ = self.env.reset()
@@ -400,3 +384,25 @@ class DQLAgent(Node):
         # Optional: Gradient clipping (can help stability)
         # torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=1.0)
         self.optimizer.step() # Update network weights
+
+    def save_models(self):
+        """Save current episode model and update best model if applicable"""
+        # Save Current Episode Model
+        try:
+            episode_model_name = f"episode_{self.episode_count}_reward_{self.episode_reward:.2f}_dqn_model.pth"
+            episode_model_path = os.path.join(self.episode_model_dir, episode_model_name)
+            torch.save(self.q_network.state_dict(), episode_model_path)
+            # self.get_logger().info(f"💾 Saved episode model to {episode_model_path}")  # Optional logging
+        except Exception as e:
+            self.get_logger().error(f"🔥 Failed to save episode model {episode_model_name}: {e}")
+
+        # Save Best Model if Current Episode is Better
+        if self.episode_reward > self.best_episode_reward:
+            self.best_episode_reward = self.episode_reward
+            try:
+                torch.save(self.q_network.state_dict(), self.best_model_path)
+                self.get_logger().info(
+                    f"🏆 Saved NEW BEST model! Episode: {self.episode_count}, Reward: {self.best_episode_reward:.2f}. Path: {self.best_model_path}"
+                )
+            except Exception as e:
+                self.get_logger().error(f"🔥 Failed to save new best model: {e}")
