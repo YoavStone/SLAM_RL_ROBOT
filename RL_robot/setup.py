@@ -70,12 +70,8 @@ setup(
     entry_points={
         'console_scripts': [
             'asymmetric_velocity_controller = sim_control.asymmetric_velocity_controller:main',
-            'teleport_service = sim_control.teleport_service:main',
-            'reset_handler = sim_control.reset_handler:main',
-
-            'control_motors = RL_robot.command_robot:main',
-
             'follow_wall = RL_robot.follow_left_wall:main',
+            'control_motors = RL_robot.command_robot:main',
             'cart_pole_dqn_agent = CartPoleExample.run_dqn_agentTRY:main',
             'slam_robot_dqn_agent = DQLRobotSLAM.run_dqn_agent:main'
         ],
