@@ -38,9 +38,3 @@
   ros_type_name: "geometry_msgs/msg/Twist"
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
-
-- ros_topic_name: "/world/empty/set_entity_pose" # world name
-  gz_service_name: "/world/empty/set_pose"      # Gazebo's internal service
-  ros_type_name: "ros_gz_interfaces/srv/SetEntityPose"
-  gz_type_name: "gz.msgs.Pose" # This might differ slightly based on gz msgs version
-  direction: ROS_TO_GZ # Indicates ROS calls Gazebo service

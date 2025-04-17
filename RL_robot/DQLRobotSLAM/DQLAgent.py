@@ -158,7 +158,6 @@ class DQLAgent(Node):
 
         # Reset if episode is done
         if is_done:
-            print(f"Episode terminated, resetting environment...")
             self.current_obs, _ = self.env.reset()
             self.reward_buffer.append(self.episode_reward)
             self.episode_count += 1
