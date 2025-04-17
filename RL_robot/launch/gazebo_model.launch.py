@@ -88,13 +88,19 @@ def generate_launch_description():
         arguments=['-d', os.path.join(get_package_share_directory(namePackage), 'rviz', 'gpu_lidar_bridge.rviz')],
     )
 
+    robot_x_location = DeclareLaunchArgument('robot_spawn_x', default_value='0.0')
+    robot_y_location = DeclareLaunchArgument('robot_spawn_y', default_value='0.0')
+
     # Spawn model GZ node
     spawnModelNodeGazebo = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=[
             '-name', robotXacroName,
-            '-topic', 'robot_description'
+            '-topic', 'robot_description',
+            '-x', LaunchConfiguration('robot_spawn_x'),
+            '-y', LaunchConfiguration('robot_spawn_y'),
+            '-z', '0.01',
         ],
         output='screen',
     )
@@ -158,6 +164,8 @@ def generate_launch_description():
 
     # Add the launch arguments
     launchDescriptionObject.add_action(launch_dqn_arg)
+    launchDescriptionObject.add_action(robot_x_location)
+    launchDescriptionObject.add_action(robot_y_location)
     launchDescriptionObject.add_action(learning_mode_arg)
     launchDescriptionObject.add_action(model_path_arg)
 

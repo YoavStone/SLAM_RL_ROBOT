@@ -256,5 +256,4 @@ class DQLAgent(Node):
     def save_model(self):
         """Save the current model"""
         torch.save(self.q_network.state_dict(), self.best_model_path)
-        self.get_logger().info(
-            f"🏆 Saved best model with avg reward {self.best_mean_reward:.2f} at {self.best_model_path}")
+        print(f"🏆 Saved best model with avg reward {self.best_mean_reward:.2f} at {self.best_model_path}")

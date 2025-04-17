@@ -9,8 +9,8 @@ def generate_launch_description():
             name='episode_monitor',
             output='screen',
             parameters=[
-                {'launch-dqn': True},
-                {'learning-mode': True}
+                {'launch_dqn': True},
+                {'learning_mode': True}
             ]
         )
     ])

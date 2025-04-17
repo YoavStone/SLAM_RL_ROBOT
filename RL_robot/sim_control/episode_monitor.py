@@ -4,6 +4,7 @@ from std_msgs.msg import Empty
 import subprocess
 import os
 import signal
+import random
 
 
 class EpisodeMonitor(Node):
@@ -19,17 +20,34 @@ class EpisodeMonitor(Node):
         self.process = None
         self.launch_file = 'gazebo_model.launch.py'
         self.launch_args = ['launch_dqn:=true', 'learning_mode:=true']
+        self.positions = [
+            (0.0, 0.0),
+            (6.3, 0.0),
+            (-6.3, 0.0),
+            (0.0, 6.3),
+            (0.0, -6.3)
+        ]
         self.launch_system()
 
+    def get_random_pose_args(self):
+        x, y = random.choice(self.positions)
+        return [f'robot_spawn_x:={x}', f'robot_spawn_y:={y}']
+
     def launch_system(self):
-        self.get_logger().info("🔄 Launching system...")
+        pose_args = self.get_random_pose_args()
+        full_args = self.get_launch_args() + pose_args
+        print(f"🔄 Launching system with pose args: {pose_args}")
+        print("launch args: ", full_args)
         self.process = subprocess.Popen(
-            ['ros2', 'launch', self.pkg, self.launch_file] + self.launch_args,
+            ['ros2', 'launch', self.pkg, self.launch_file] + full_args,
             preexec_fn=os.setsid
         )
 
+    def get_launch_args(self):
+        return self.launch_args
+
     def episode_callback(self, msg):
-        self.get_logger().info("📩 Episode ended — restarting system.")
+        print("📩 Episode ended — restarting system.")
         self.restart_system()
 
     def restart_system(self):
