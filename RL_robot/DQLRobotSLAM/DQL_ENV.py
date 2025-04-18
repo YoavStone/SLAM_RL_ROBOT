@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid, Odometry
-from geometry_msgs.msg import Twist, PoseStamped
+from geometry_msgs.msg import Twist, PoseStamped, PoseWithCovarianceStamped
 import numpy as np
 import time
 import math
@@ -59,7 +59,7 @@ class GazeboEnv(Node):
         self.scan_sub = self.create_subscription(LaserScan, 'scan', self.scan_callback, 10)
         self.odom_sub = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
         self.map_sub = self.create_subscription(OccupancyGrid, 'map', self.map_callback, 10)
-        self.slam_pose_sub = self.create_subscription(PoseStamped, 'slam_toolbox/pose', self.slam_pose_callback, 10)
+        self.slam_pose_sub = self.create_subscription(PoseWithCovarianceStamped, 'pose', self.slam_pose_callback, 10)
 
         # Gym-like interface variables
         self.observation_space = None  # Will be initialized after first data is received
@@ -86,21 +86,17 @@ class GazeboEnv(Node):
         """Process SLAM pose data"""
         try:
             # Extract position
-            x = msg.pose.position.x
-            y = msg.pose.position.y
+            x = msg.pose.pose.position.x
+            y = msg.pose.pose.position.y
 
             # Extract orientation (yaw from quaternion)
-            orientation = msg.pose.orientation
+            orientation = msg.pose.pose.orientation
             # Get yaw from quaternion
             yaw = 2 * math.atan2(orientation.z, orientation.w)
 
             self.slam_pose = [yaw, x, y]
             self.slam_pose_ready = True
 
-            # Log first time we receive SLAM pose
-            if not hasattr(self, 'logged_slam_pose'):
-                print(f"Received first SLAM pose: [{yaw:.2f}, {x:.2f}, {y:.2f}]")
-                self.logged_slam_pose = True
         except Exception as e:
             self.get_logger().error(f"Error processing SLAM pose: {e}")
 
@@ -255,16 +251,16 @@ class GazeboEnv(Node):
         """Convert action index to Twist command"""
         cmd = Twist()
 
-        # if action == 0:  # Stop
-        #     pass  # All values are initialized to 0
-        # elif action == 1:  # Forward
-        #     cmd.linear.x = LINEAR_SPEED
-        # elif action == 2:  # Back
-        #     cmd.linear.x = -LINEAR_SPEED
-        # elif action == 3:  # Right
-        #     cmd.angular.z = -ANGULAR_SPEED
-        # elif action == 4:  # Left
-        #     cmd.angular.z = ANGULAR_SPEED
+        if action == 0:  # Stop
+            pass  # All values are initialized to 0
+        elif action == 1:  # Forward
+            cmd.linear.x = LINEAR_SPEED
+        elif action == 2:  # Back
+            cmd.linear.x = -LINEAR_SPEED
+        elif action == 3:  # Right
+            cmd.angular.z = -ANGULAR_SPEED
+        elif action == 4:  # Left
+            cmd.angular.z = ANGULAR_SPEED
 
         return cmd
 
@@ -277,7 +273,6 @@ class GazeboEnv(Node):
         """Get the current state representation"""
         # Use SLAM pose if available, otherwise fall back to odometry
         position = self.slam_pose if self.slam_pose is not None else self.pos
-        print("pos: ", position)
         return position + self.measured_distance_to_walls + self.map_processed
 
     def get_state_size(self):
