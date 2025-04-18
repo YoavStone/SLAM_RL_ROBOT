@@ -9,6 +9,8 @@ import math
 import torch
 from gymnasium import spaces
 
+from .cropped_map_visualizer import MapVisualizationNode
+
 
 # Constants
 CONTINUES_PUNISHMENT = -2  # amount of punishment for every sec wasted
@@ -16,8 +18,8 @@ HIT_WALL_PUNISHMENT = -200
 CLOSE_TO_WALL_PUNISHMENT = -0.1
 EXPLORATION_REWARD = 1.0
 
-LINEAR_SPEED = 0.0  # irl: 0.3  # m/s
-ANGULAR_SPEED = 0.0*2  # irl: 0.3  # rad/s
+LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
+ANGULAR_SPEED = 0.3*2  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
@@ -25,6 +27,13 @@ class GazeboEnv(Node):
 
     def __init__(self, rad_of_robot=0.34):
         super().__init__('gazebo_env_node')
+
+        # cropped map visualizer
+        print("Creating visualization node...")
+        self.vis_node = MapVisualizationNode()
+        # Create timer with more explicit callback reference
+        self.pub_crop_timer = self.create_timer(1.0, self.vis_node.publish_map)
+        print("Visualization node created")
 
         # Robot properties
         self.rad_of_robot = rad_of_robot * 1.3  # radius from lidar to tip with safety margin
@@ -42,7 +51,7 @@ class GazeboEnv(Node):
         # Termination indications
         self.episode_start_time = time.time()
         self.total_cells = None
-        self.explored_threshold = 0.05  # 5%
+        self.explored_threshold = 0.90  # 90%
         self.max_episode_duration = 120  # seconds
 
         # Publishers and subscribers
@@ -96,7 +105,7 @@ class GazeboEnv(Node):
         self.odom_ready = True
 
     def map_callback(self, msg):
-        """Process SLAM map data by cropping a 6m x 6m area centered on the robot's position"""
+        """Process SLAM map data by cropping a 6m x 6m area centered on the robot's starting position"""
         # Store raw map data
         self.map_raw = msg
 
@@ -111,21 +120,29 @@ class GazeboEnv(Node):
         crop_size_meters = 6.0  # 6m x 6m area
         crop_size_cells = int(crop_size_meters / resolution)
 
-        # If robot position isn't available yet, use the center of the map
-        if not self.odom_ready:
-            robot_cell_x = width // 2
-            robot_cell_y = height // 2
-        else:
-            # Convert robot position to grid cell coordinates
-            robot_cell_x = int((self.pos[1] - origin_x) / resolution)
-            robot_cell_y = int((self.pos[2] - origin_y) / resolution)
+        # Ensure crop_size_cells is even for better centering
+        if crop_size_cells % 2 != 0:
+            crop_size_cells += 1
 
+        # Store the center position (robot starting position) if not already stored
+        if not hasattr(self, 'center_cell_x') or not hasattr(self, 'center_cell_y'):
+            if not self.odom_ready:
+                # If odom not ready, use the center of the map
+                self.center_cell_x = width // 2
+                self.center_cell_y = height // 2
+            else:
+                # Convert robot position to grid cell coordinates and store as center
+                self.center_cell_x = int((self.pos[1] - origin_x) / resolution)
+                self.center_cell_y = int((self.pos[2] - origin_y) / resolution)
+            print(f"Fixed map center at ({self.center_cell_x}, {self.center_cell_y})")
+
+        # Use the stored center position instead of current robot position
         # Calculate boundaries for cropping (ensuring we don't go out of bounds)
         half_size = crop_size_cells // 2
-        min_x = max(0, robot_cell_x - half_size)
-        min_y = max(0, robot_cell_y - half_size)
-        max_x = min(width, robot_cell_x + half_size)
-        max_y = min(height, robot_cell_y + half_size)
+        min_x = max(0, self.center_cell_x - half_size)
+        min_y = max(0, self.center_cell_y - half_size)
+        max_x = min(width, self.center_cell_x + half_size)
+        max_y = min(height, self.center_cell_y + half_size)
 
         # Calculate actual dimensions of cropped area
         actual_width = max_x - min_x
@@ -156,17 +173,21 @@ class GazeboEnv(Node):
         self.map_processed = cropped_map
         self.map_ready = True
 
+        # After processing the map and if visualization node exists:
+        self.vis_node.set_map(cropped_map, resolution)
+
         if self.total_cells is None:
             self.total_cells = len(cropped_map)
 
-        # Log info about the cropped map
-        # print(f"Cropped map: {actual_width}x{actual_height} cells " + f"at position ({min_x}, {min_y}) from original {width}x{height}")
+        # Log info about the cropped map (only first time)
+        if not hasattr(self, 'logged_crop_info'):
+            print(f"Fixed cropped map: {actual_width}x{actual_height} cells " +
+                  f"centered at ({self.center_cell_x}, {self.center_cell_y}) from original {width}x{height}")
+            self.logged_crop_info = True
 
-        # Initialize observation space if not already done
-        # print("obs space: ", self.observation_space)
         print("updated map")
         if self.observation_space is None:
-            obs_size = len(self.get_state())  # next lines define max and min of each value in the obs space. note: 4 and not math.pi because there is a chance for a slight error
+            obs_size = len(self.get_state())
             self.observation_space = spaces.Box(
                 low=np.array([-4, -100, -100] + [0] * 8 + [-1] * len(self.map_processed)),
                 high=np.array([4, 100, 100] + [10] * 8 + [1] * len(self.map_processed)),
@@ -186,7 +207,7 @@ class GazeboEnv(Node):
             )
 
             if is_terminated:
-                print("Environment terminated (hit wall)")
+                print("Environment terminated")
 
     def action_to_cmd(self, action):
         """Convert action index to Twist command"""
@@ -266,7 +287,7 @@ class GazeboEnv(Node):
     def check_time_and_map_completion(self):
         # Check map exploration condition
         explored_percent = self.percent_explored()
-        if explored_percent <= self.explored_threshold:
+        if explored_percent >= self.explored_threshold:
             print(f"Terminating: only {explored_percent * 100:.2f}% of map explored")
             return True
 
@@ -349,7 +370,6 @@ class DQLEnv:
 
     def __init__(self, rad_of_robot=0.34):
         # Initialize ROS node for environment
-        # Note: rclpy.init() should be called before this from the main node
         self.gazebo_env = GazeboEnv(rad_of_robot=rad_of_robot)
 
         # Run a few spin cycles to get initial data
