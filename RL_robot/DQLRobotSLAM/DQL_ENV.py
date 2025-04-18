@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid, Odometry
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, PoseStamped
 import numpy as np
 import time
 import math
@@ -11,7 +11,6 @@ from gymnasium import spaces
 
 from .cropped_map_visualizer import MapVisualizationNode
 
-
 # Constants
 CONTINUES_PUNISHMENT = -2  # amount of punishment for every sec wasted
 HIT_WALL_PUNISHMENT = -200
@@ -19,7 +18,7 @@ CLOSE_TO_WALL_PUNISHMENT = -0.1
 EXPLORATION_REWARD = 1.0
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
-ANGULAR_SPEED = 0.3*2  # irl: 0.3  # rad/s
+ANGULAR_SPEED = 0.3 * 2  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
@@ -31,8 +30,8 @@ class GazeboEnv(Node):
         # cropped map visualizer
         print("Creating visualization node...")
         self.vis_node = MapVisualizationNode()
-        # Create timer with more explicit callback reference
-        self.pub_crop_timer = self.create_timer(1.0, self.vis_node.publish_map)
+        # Create timer to periodically publish the map
+        self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
 
         # Robot properties
@@ -42,6 +41,7 @@ class GazeboEnv(Node):
         self.previous_map = None
         self.map_processed = []  # Processed map data for DQL input
         self.pos = [0.0, 0.0, 0.0]  # [orientation, x, y]
+        self.slam_pose = None  # Store the latest SLAM pose
         self.measured_distance_to_walls = [10.0] * 8  # distances in eighths of circle
         self.last_update_time = time.time()
 
@@ -59,6 +59,7 @@ class GazeboEnv(Node):
         self.scan_sub = self.create_subscription(LaserScan, 'scan', self.scan_callback, 10)
         self.odom_sub = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
         self.map_sub = self.create_subscription(OccupancyGrid, 'map', self.map_callback, 10)
+        self.slam_pose_sub = self.create_subscription(PoseStamped, 'slam_toolbox/pose', self.slam_pose_callback, 10)
 
         # Gym-like interface variables
         self.observation_space = None  # Will be initialized after first data is received
@@ -68,11 +69,40 @@ class GazeboEnv(Node):
         self.scan_ready = False
         self.odom_ready = False
         self.map_ready = False
+        self.slam_pose_ready = False
 
         # Timer for environment update (0.1 second interval)
         self.timer = self.create_timer(0.1, self.update_timer_callback)
 
         print('Gazebo Environment Node initialized')
+
+    def publish_cropped_map(self):
+        """Trigger map visualization publication if map data is available"""
+        if hasattr(self, 'map_processed') and self.map_processed:
+            # If we have valid map data, call the visualization node to publish it
+            self.vis_node.publish_map()
+
+    def slam_pose_callback(self, msg):
+        """Process SLAM pose data"""
+        try:
+            # Extract position
+            x = msg.pose.position.x
+            y = msg.pose.position.y
+
+            # Extract orientation (yaw from quaternion)
+            orientation = msg.pose.orientation
+            # Get yaw from quaternion
+            yaw = 2 * math.atan2(orientation.z, orientation.w)
+
+            self.slam_pose = [yaw, x, y]
+            self.slam_pose_ready = True
+
+            # Log first time we receive SLAM pose
+            if not hasattr(self, 'logged_slam_pose'):
+                print(f"Received first SLAM pose: [{yaw:.2f}, {x:.2f}, {y:.2f}]")
+                self.logged_slam_pose = True
+        except Exception as e:
+            self.get_logger().error(f"Error processing SLAM pose: {e}")
 
     def scan_callback(self, msg):
         """Process laser scan data"""
@@ -99,7 +129,10 @@ class GazeboEnv(Node):
         # Extract position
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
-        yaw = msg.pose.pose.orientation.z
+
+        # Extract orientation
+        orientation = msg.pose.pose.orientation
+        yaw = 2 * math.atan2(orientation.z, orientation.w)
 
         self.pos = [yaw, x, y]
         self.odom_ready = True
@@ -126,17 +159,23 @@ class GazeboEnv(Node):
 
         # Store the center position (robot starting position) if not already stored
         if not hasattr(self, 'center_cell_x') or not hasattr(self, 'center_cell_y'):
-            if not self.odom_ready:
-                # If odom not ready, use the center of the map
-                self.center_cell_x = width // 2
-                self.center_cell_y = height // 2
-            else:
-                # Convert robot position to grid cell coordinates and store as center
+            # Use SLAM pose if available for better initial position
+            if self.slam_pose is not None:
+                # Convert SLAM position to grid cell coordinates
+                self.center_cell_x = int((self.slam_pose[1] - origin_x) / resolution)
+                self.center_cell_y = int((self.slam_pose[2] - origin_y) / resolution)
+                print(f"Fixed map center using SLAM pose: ({self.center_cell_x}, {self.center_cell_y})")
+            elif self.odom_ready:
+                # Fall back to odometry if SLAM not available
                 self.center_cell_x = int((self.pos[1] - origin_x) / resolution)
                 self.center_cell_y = int((self.pos[2] - origin_y) / resolution)
-            print(f"Fixed map center at ({self.center_cell_x}, {self.center_cell_y})")
+                print(f"Fixed map center using odometry: ({self.center_cell_x}, {self.center_cell_y})")
+            else:
+                # If no position data, use the center of the map
+                self.center_cell_x = width // 2
+                self.center_cell_y = height // 2
+                print(f"Fixed map center using map center: ({self.center_cell_x}, {self.center_cell_y})")
 
-        # Use the stored center position instead of current robot position
         # Calculate boundaries for cropping (ensuring we don't go out of bounds)
         half_size = crop_size_cells // 2
         min_x = max(0, self.center_cell_x - half_size)
@@ -173,7 +212,7 @@ class GazeboEnv(Node):
         self.map_processed = cropped_map
         self.map_ready = True
 
-        # After processing the map and if visualization node exists:
+        # After processing the map, update visualization
         self.vis_node.set_map(cropped_map, resolution)
 
         if self.total_cells is None:
@@ -197,13 +236,16 @@ class GazeboEnv(Node):
 
     def update_timer_callback(self):
         """Timer callback to update environment state at 10Hz (0.1 seconds)"""
-        if self.scan_ready and self.odom_ready and self.map_ready:
+        if self.scan_ready and self.map_ready and (self.odom_ready or self.slam_pose_ready):
             dt = time.time() - self.last_update_time
             self.last_update_time = time.time()
 
             # This would typically be called from the DQL agent's update loop
             new_state, reward, is_terminated = self.update_env(
-                self.map_processed, self.pos, self.measured_distance_to_walls, dt
+                self.map_processed,
+                self.slam_pose if self.slam_pose is not None else self.pos,
+                self.measured_distance_to_walls,
+                dt
             )
 
             if is_terminated:
@@ -213,16 +255,16 @@ class GazeboEnv(Node):
         """Convert action index to Twist command"""
         cmd = Twist()
 
-        if action == 0:  # Stop
-            pass  # All values are initialized to 0
-        elif action == 1:  # Forward
-            cmd.linear.x = LINEAR_SPEED
-        elif action == 2:  # Back
-            cmd.linear.x = -LINEAR_SPEED
-        elif action == 3:  # Right
-            cmd.angular.z = -ANGULAR_SPEED
-        elif action == 4:  # Left
-            cmd.angular.z = ANGULAR_SPEED
+        # if action == 0:  # Stop
+        #     pass  # All values are initialized to 0
+        # elif action == 1:  # Forward
+        #     cmd.linear.x = LINEAR_SPEED
+        # elif action == 2:  # Back
+        #     cmd.linear.x = -LINEAR_SPEED
+        # elif action == 3:  # Right
+        #     cmd.angular.z = -ANGULAR_SPEED
+        # elif action == 4:  # Left
+        #     cmd.angular.z = ANGULAR_SPEED
 
         return cmd
 
@@ -233,7 +275,10 @@ class GazeboEnv(Node):
 
     def get_state(self):
         """Get the current state representation"""
-        return self.pos + self.measured_distance_to_walls + self.map_processed
+        # Use SLAM pose if available, otherwise fall back to odometry
+        position = self.slam_pose if self.slam_pose is not None else self.pos
+        print("pos: ", position)
+        return position + self.measured_distance_to_walls + self.map_processed
 
     def get_state_size(self):
         """Get the size of the state vector"""
@@ -244,7 +289,7 @@ class GazeboEnv(Node):
         return len(self.actions)
 
     def percent_explored(self):
-        if self.total_cells is None or len(self.previous_map) == 0:
+        if self.total_cells is None or not hasattr(self, 'previous_map') or len(self.previous_map) == 0:
             return 0.0
         known_cells = sum(1 for val in self.previous_map if val != -1.0)
         return known_cells / self.total_cells
@@ -257,9 +302,9 @@ class GazeboEnv(Node):
         if closest < self.rad_of_robot:  # Robot is too close to a wall
             punishment += HIT_WALL_PUNISHMENT
             is_terminated = True
-        elif self.rad_of_robot+0.007 < closest < self.rad_of_robot*1.3:  # if close but not too close slight punishment
-            punishment = (CLOSE_TO_WALL_PUNISHMENT/(closest-self.rad_of_robot)**2)*dt
-        elif self.rad_of_robot+0.007 > closest:
+        elif self.rad_of_robot + 0.007 < closest < self.rad_of_robot * 1.3:  # if close but not too close slight punishment
+            punishment = (CLOSE_TO_WALL_PUNISHMENT / (closest - self.rad_of_robot) ** 2) * dt
+        elif self.rad_of_robot + 0.007 > closest:
             punishment = HIT_WALL_PUNISHMENT
 
         return punishment, is_terminated
@@ -267,7 +312,7 @@ class GazeboEnv(Node):
     def change_in_map_to_reward(self, new_map):
         """Calculate reward based on newly discovered map cells"""
         # Skip if we don't have a previous map to compare
-        if self.previous_map is None:
+        if not hasattr(self, 'previous_map') or self.previous_map is None:
             self.previous_map = new_map.copy()
             return 0
 
@@ -288,14 +333,17 @@ class GazeboEnv(Node):
         # Check map exploration condition
         explored_percent = self.percent_explored()
         if explored_percent >= self.explored_threshold:
-            print(f"Terminating: only {explored_percent * 100:.2f}% of map explored")
+            print(
+                f"Terminating: {explored_percent * 100:.2f}% of map explored (target: {self.explored_threshold * 100}%)")
             return True
 
         # Check time-based termination
         elapsed = time.time() - self.episode_start_time
         if elapsed > self.max_episode_duration:
-            print(f"Terminating: episode ran for {elapsed:.1f}s")
+            print(f"Terminating: episode ran for {elapsed:.1f}s (max: {self.max_episode_duration}s)")
             return True
+
+        return False
 
     def calc_reward(self, time_from_last_env_update, new_dis, new_map):
         """Calculate reward based on time spent, proximity to walls, and exploration"""
@@ -317,8 +365,7 @@ class GazeboEnv(Node):
         exploration_reward = self.change_in_map_to_reward(new_map)
         reward += exploration_reward
 
-        if self.check_time_and_map_completion():
-            is_terminated = True
+        is_terminated = self.check_time_and_map_completion()
 
         if reward != CONTINUES_PUNISHMENT * time_from_last_env_update:  # log if reward is not static
             print("reward_t: ", reward, "is_terminated: ", is_terminated)
@@ -329,22 +376,20 @@ class GazeboEnv(Node):
         """Update environment state and calculate reward"""
         reward, is_terminated = self.calc_reward(dt, new_dis, new_map)
         self.map_processed = new_map
-        self.pos = new_pos
+        # Only update self.pos if we're not using SLAM pose
+        if self.slam_pose is None or new_pos is self.pos:
+            self.pos = new_pos
         self.measured_distance_to_walls = new_dis
         new_state = self.get_state()
         return new_state, reward, is_terminated
 
     def reset(self):
         """Reset the environment - in Gazebo this would typically involve resetting the simulation"""
-        # This is a placeholder - in a real implementation you would:
-        # 1. Call a service to reset the Gazebo simulation
-        # 2. Wait for new data from sensors
-        # 3. Return the initial state
-
-        # For now, we'll just wait for fresh data
+        # Reset flags
         self.scan_ready = False
         self.odom_ready = False
         self.map_ready = False
+        self.slam_pose_ready = False
 
         # Send stop command
         stop_cmd = Twist()
@@ -354,7 +399,7 @@ class GazeboEnv(Node):
         timeout = 5.0  # seconds
         start_time = time.time()
 
-        while not (self.scan_ready and self.odom_ready and self.map_ready):
+        while not (self.scan_ready and self.map_ready and (self.odom_ready or self.slam_pose_ready)):
             rclpy.spin_once(self, timeout_sec=0.1)
             if time.time() - start_time > timeout:
                 print("Timeout waiting for sensor data during reset")
