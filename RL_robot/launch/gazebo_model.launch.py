@@ -13,29 +13,6 @@ import xacro
 
 
 def generate_launch_description():
-    # Add launch argument for DQN agent
-    launch_dqn = LaunchConfiguration('launch_dqn')
-    launch_dqn_arg = DeclareLaunchArgument(
-        'launch_dqn',
-        default_value='false',
-        description='Whether to launch the DQN agent (true) or not (false)'
-    )
-
-    # DQN-related launch arguments
-    learning_mode = LaunchConfiguration('learning_mode')
-    model_path = LaunchConfiguration('model_path')
-
-    learning_mode_arg = DeclareLaunchArgument(
-        'learning_mode',
-        default_value='true',
-        description='Whether the agent is in learning mode (true) or execution mode (false)'
-    )
-
-    model_path_arg = DeclareLaunchArgument(
-        'model_path',
-        default_value='',
-        description='Path to a saved model to load. If empty, starts with a fresh model.'
-    )
 
     # name in xacro file
     robotXacroName = 'mapping_robot'
@@ -147,27 +124,12 @@ def generate_launch_description():
         }],
     )
 
-    # Include the DQN agent launch file conditionally
-    dqn_agent_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory(namePackage), 'launch', 'slam_dqn_agent_launch.py')
-        ]),
-        condition=IfCondition(launch_dqn),
-        launch_arguments={
-            'learning_mode': learning_mode,
-            'model_path': model_path
-        }.items()
-    )
-
     # empty launch description object
     launchDescriptionObject = LaunchDescription()
 
     # Add the launch arguments
-    launchDescriptionObject.add_action(launch_dqn_arg)
     launchDescriptionObject.add_action(robot_x_location)
     launchDescriptionObject.add_action(robot_y_location)
-    launchDescriptionObject.add_action(learning_mode_arg)
-    launchDescriptionObject.add_action(model_path_arg)
 
     # add gazeboLaunch
     launchDescriptionObject.add_action(sim_vel_control_node)
@@ -182,8 +144,5 @@ def generate_launch_description():
     launchDescriptionObject.add_action(rviz)
 
     launchDescriptionObject.add_action(slam_toolbox_launch)
-
-    # Add the DQN agent launch file (conditional)
-    launchDescriptionObject.add_action(dqn_agent_launch)
 
     return launchDescriptionObject

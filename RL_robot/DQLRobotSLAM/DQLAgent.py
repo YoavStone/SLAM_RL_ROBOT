@@ -7,15 +7,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-# import imageio.v2 as imageio # Not used in the provided snippet, can be removed if not needed elsewhere
 import os
 import time
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty
 
-from .DQN import DQN  # Assuming DQN.py is in the same directory
-from .DQL_ENV import DQLEnv # Assuming DQL_ENV.py is in the same directory
+from .DQN import DQN  # Assuming DQN
+from .DQL_ENV import DQLEnv # Assuming DQL_ENV
+from ..sim_control.sim_reset_handler import SimulationResetHandler
+
 
 # Hyperparameters (Keep relevant ones)
 GAMMA = 0.99
@@ -63,6 +64,8 @@ class DQLAgent(Node):
                 rclpy.spin_once(self.env.gazebo_env, timeout_sec=0.1)
                 self.get_logger().info("Waiting for observation space to be initialized...", throttle_duration_sec=2.0)
                 time.sleep(0.5)
+
+        self.reset_handler = SimulationResetHandler(self, self.env)
 
         self.get_logger().info(f"Observation space shape: {self.env.observation_space.shape}")
         self.get_logger().info(f"Action space size: {self.env.action_space.n}")
@@ -202,6 +205,10 @@ class DQLAgent(Node):
 
     def train_step(self):
         """Executes one step of interaction and learning."""
+        # Skip execution during reset
+        if self.reset_handler.is_reset_in_progress():
+            self.get_logger().debug("Skipping training step during reset")
+            return
         if self.current_obs is None:
              self.get_logger().warn("Current observation is None at start of train_step. Attempting reset.")
              self.current_obs, _ = self.env.reset()
@@ -290,6 +297,10 @@ class DQLAgent(Node):
 
     def execute_step(self):
         """Executes the learned policy without exploration or learning."""
+        # Skip execution during reset
+        if self.reset_handler.is_reset_in_progress():
+            self.get_logger().debug("Skipping execution step during reset")
+            return
         if self.current_obs is None:
             self.current_obs, _ = self.env.reset()
             if self.current_obs is None:

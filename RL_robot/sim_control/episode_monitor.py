@@ -1,32 +1,28 @@
-# episode_monitor.py
-
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty
+
+import time
 import subprocess
 import os
 import signal
 import random
 import sys # Import sys to access command line args if needed, though params are better
 
+
 class EpisodeMonitor(Node):
     def __init__(self):
         super().__init__('episode_monitor')
 
         # Declare parameters with default values
-        self.declare_parameter('launch_dqn', True)
-        self.declare_parameter('learning_mode', True)
         self.declare_parameter('spawn_location', '') # Default: empty string means random
         self.declare_parameter('nn_path', '')       # Default: empty string means no specific NN path
 
         # Get parameter values
-        self.launch_dqn = self.get_parameter('launch_dqn').get_parameter_value().bool_value
-        self.learning_mode = self.get_parameter('learning_mode').get_parameter_value().bool_value
         self.spawn_location_str = self.get_parameter('spawn_location').get_parameter_value().string_value
         self.nn_path = self.get_parameter('nn_path').get_parameter_value().string_value
 
-        self.get_logger().info(f"Received parameters: launch_dqn={self.launch_dqn}, learning_mode={self.learning_mode}, "
-                             f"spawn_location='{self.spawn_location_str}', nn_path='{self.nn_path}'")
+        self.get_logger().info(f"Received parameters: spawn_location='{self.spawn_location_str}', nn_path='{self.nn_path}'")
 
         self.subscription = self.create_subscription(
             Empty,
@@ -34,7 +30,15 @@ class EpisodeMonitor(Node):
             self.episode_callback,
             10
         )
-        self.pkg = 'RL_robot' # Replace with your actual package name if different
+
+        # Add publisher for simulation reset notifications
+        self.sim_reset_pub = self.create_publisher(
+            Empty,
+            'simulation_reset',
+            10
+        )
+
+        self.pkg = 'RL_robot'
         self.process = None
         self.launch_file = 'gazebo_model.launch.py' # The launch file for Gazebo and the model
 
@@ -75,15 +79,17 @@ class EpisodeMonitor(Node):
              self.get_logger().error(f"Error parsing spawn_location parameter: {e}. Falling back to random.")
              return None
 
-
     def launch_system(self):
         """Launches the gazebo_model.launch.py with appropriate arguments."""
         if self.process:
-            self.get_logger().warn("Launch called while a process might still be running. Ensure proper cleanup.")
-            # Optional: add forceful termination here if needed, though restart_system handles it
-            os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-            self.process.wait()
-            self.process = None
+            self.get_logger().warn("Launch called while a process might still be running. Ensuring proper cleanup.")
+            try:
+                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
+                self.process.wait()
+            except Exception as e:
+                self.get_logger().error(f"Error cleaning up existing process: {e}")
+            finally:
+                self.process = None
 
         # --- Determine Pose Arguments ---
         pose_args = []
@@ -96,23 +102,15 @@ class EpisodeMonitor(Node):
         else: # No specific location provided, use random
             pose_args = self.get_random_pose_args()
 
-        # --- Determine Base and Optional Arguments ---
-        base_args = [
-            f'launch_dqn:={self.launch_dqn}',
-            f'learning_mode:={self.learning_mode}'
-        ]
-
         optional_args = []
         if self.nn_path: # If a neural network path is provided
-             # IMPORTANT: gazebo_model.launch.py must be modified to accept and use 'nn_path'
             optional_args.append(f'nn_path:={self.nn_path}')
             self.get_logger().info(f"Passing nn_path: {self.nn_path}")
         else:
              self.get_logger().info("No specific nn_path provided.")
 
-
         # --- Combine Arguments ---
-        full_args = base_args + pose_args + optional_args
+        full_args = pose_args + optional_args
 
         self.get_logger().info(f"🔄 Launching '{self.launch_file}' with args: {full_args}")
 
@@ -133,40 +131,47 @@ class EpisodeMonitor(Node):
             rclpy.shutdown()
             sys.exit(1)
 
-
     def episode_callback(self, msg):
         self.get_logger().info("📩 Episode ended signal received — restarting system.")
         self.restart_system()
 
     def restart_system(self):
         """Terminates the current simulation process and launches a new one."""
-        if self.process and self.process.poll() is None: # Check if process exists and is running
+        if self.process and self.process.poll() is None:  # Check if process exists and is running
             self.get_logger().info(f"Terminating process group {os.getpgid(self.process.pid)}...")
             try:
-                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM) # Send SIGTERM to the whole process group
-                self.process.wait(timeout=5) # Wait for graceful termination
+                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)  # Send SIGTERM to the whole process group
+                self.process.wait(timeout=5)  # Wait for graceful termination
                 self.get_logger().info("Process terminated.")
             except ProcessLookupError:
-                 self.get_logger().warn("Process group already terminated.")
+                self.get_logger().warn("Process group already terminated.")
             except subprocess.TimeoutExpired:
-                 self.get_logger().warn("Process did not terminate gracefully after 5s. Sending SIGKILL.")
-                 try:
-                     os.killpg(os.getpgid(self.process.pid), signal.SIGKILL) # Force kill
-                     self.process.wait(timeout=2)
-                 except Exception as e:
-                     self.get_logger().error(f"Error during SIGKILL: {e}")
+                self.get_logger().warn("Process did not terminate gracefully after 5s. Sending SIGKILL.")
+                try:
+                    os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)  # Force kill
+                    self.process.wait(timeout=2)
+                except Exception as e:
+                    self.get_logger().error(f"Error during SIGKILL: {e}")
             except Exception as e:
                 self.get_logger().error(f"Error terminating process: {e}")
             finally:
-                self.process = None # Ensure process handle is cleared
+                self.process = None  # Ensure process handle is cleared
         elif self.process:
-             self.get_logger().info("Process was already terminated.")
-             self.process = None # Clear handle if process finished but handle wasn't cleared
+            self.get_logger().info("Process was already terminated.")
+            self.process = None  # Clear handle if process finished but handle wasn't cleared
         else:
             self.get_logger().info("No process was running.")
 
         # Launch a new instance
         self.launch_system()
+
+        # Allow the simulation to start up
+        self.get_logger().info("Waiting for simulation to stabilize...")
+        time.sleep(2.0)  # Give the simulation time to start
+
+        # Notify about the simulation reset
+        self.get_logger().info("Publishing simulation reset notification")
+        self.sim_reset_pub.publish(Empty())
 
     def shutdown_hook(self):
         """Cleanly shut down the subprocess when the node is terminated."""
@@ -182,7 +187,7 @@ class EpisodeMonitor(Node):
                     os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
                     self.process.wait(timeout=2)
                 except Exception as kill_e:
-                     self.get_logger().error(f"Error during shutdown SIGKILL: {kill_e}")
+                    self.get_logger().error(f"Error during shutdown SIGKILL: {kill_e}")
             finally:
                 self.process = None
 
