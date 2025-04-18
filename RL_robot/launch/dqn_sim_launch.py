@@ -15,6 +15,8 @@ def generate_launch_description():
     learning_mode = LaunchConfiguration('learning_mode')
     model_path = LaunchConfiguration('model_path')
     spawn_location = LaunchConfiguration('spawn_location')
+    robot_spawn_x = LaunchConfiguration('robot_spawn_x')
+    robot_spawn_y = LaunchConfiguration('robot_spawn_y')
 
     learning_mode_arg = DeclareLaunchArgument(
         'learning_mode',
@@ -34,7 +36,31 @@ def generate_launch_description():
         description='Initial spawn location for the robot in x,y format'
     )
 
-    # Launch the DQN agent separately (this will keep running)
+    # Create separate arguments for x and y
+    robot_spawn_x_arg = DeclareLaunchArgument(
+        'robot_spawn_x',
+        default_value='0.0',
+        description='Robot spawn X position'
+    )
+
+    robot_spawn_y_arg = DeclareLaunchArgument(
+        'robot_spawn_y',
+        default_value='0.0',
+        description='Robot spawn Y position'
+    )
+
+    # Launch Gazebo and the robot
+    gazebo_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory(namePackage), 'launch', 'gazebo_model.launch.py')
+        ]),
+        launch_arguments={
+            'robot_spawn_x': robot_spawn_x,
+            'robot_spawn_y': robot_spawn_y
+        }.items()
+    )
+
+    # Launch the DQN agent
     dqn_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory(namePackage), 'launch', 'slam_dqn_agent_launch.py')
@@ -45,20 +71,24 @@ def generate_launch_description():
         }.items()
     )
 
-    # Launch the episode monitor which will manage the simulation resets
-    episode_monitor_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory(namePackage), 'launch', 'episode_monitor.launch.py')
-        ]),
-        launch_arguments={
-            'spawn_location': spawn_location,
-        }.items()
+    # Launch the episode monitor
+    episode_monitor_node = Node(
+        package='RL_robot',
+        executable='episode_monitor',
+        name='episode_monitor',
+        output='screen',
+        parameters=[
+            {'spawn_location': spawn_location}
+        ]
     )
 
     return LaunchDescription([
         learning_mode_arg,
         model_path_arg,
         spawn_location_arg,
-        episode_monitor_launch,
-        dqn_launch,
+        robot_spawn_x_arg,
+        robot_spawn_y_arg,
+        gazebo_launch,  # Launch Gazebo first
+        dqn_launch,  # Then launch the DQN agent
+        episode_monitor_node  # Finally launch the episode monitor
     ])

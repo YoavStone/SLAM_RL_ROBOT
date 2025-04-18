@@ -208,6 +208,7 @@ class DQLAgent(Node):
         # Skip execution during reset
         if self.reset_handler.is_reset_in_progress():
             self.get_logger().debug("Skipping training step during reset")
+            time.sleep(6.0)
             return
         if self.current_obs is None:
              self.get_logger().warn("Current observation is None at start of train_step. Attempting reset.")
@@ -282,6 +283,7 @@ class DQLAgent(Node):
 
             # Publish episode end signal for external listeners (like episode_monitor)
             self.episode_end_pub.publish(Empty())
+            time.sleep(0.5)
 
 
         # --- Learning Step ---
@@ -300,6 +302,7 @@ class DQLAgent(Node):
         # Skip execution during reset
         if self.reset_handler.is_reset_in_progress():
             self.get_logger().debug("Skipping training step during reset")
+            time.sleep(6.0)
             return
         if self.current_obs is None:
             self.current_obs, _ = self.env.reset()
@@ -346,6 +349,7 @@ class DQLAgent(Node):
 
             # Publish episode end signal
             self.episode_end_pub.publish(Empty())
+            time.sleep(0.5)
 
 
     def learn_step(self):

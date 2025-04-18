@@ -1,13 +1,13 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty
-
-import time
-import subprocess
-import os
-import signal
+from slam_toolbox.srv import Reset
+from gazebo_msgs.srv import SetModelState
+from gazebo_msgs.msg import ModelState
+from geometry_msgs.msg import Pose, Twist
 import random
-import sys # Import sys to access command line args if needed, though params are better
+import math
+import time
 
 
 class EpisodeMonitor(Node):
@@ -15,34 +15,20 @@ class EpisodeMonitor(Node):
         super().__init__('episode_monitor')
 
         # Declare parameters with default values
-        self.declare_parameter('spawn_location', '') # Default: empty string means random
-        self.declare_parameter('nn_path', '')       # Default: empty string means no specific NN path
+        self.declare_parameter('spawn_location', '')  # Default: empty string means random
+
+        self.is_resetting = False
+        self.reset_count = 0
+        self.last_reset_time = time.time()
 
         # Get parameter values
         self.spawn_location_str = self.get_parameter('spawn_location').get_parameter_value().string_value
-        self.nn_path = self.get_parameter('nn_path').get_parameter_value().string_value
+        self.get_logger().info(f"Received parameters: spawn_location='{self.spawn_location_str}'")
 
-        self.get_logger().info(f"Received parameters: spawn_location='{self.spawn_location_str}', nn_path='{self.nn_path}'")
+        # Robot model name in Gazebo
+        self.model_name = 'mapping_robot'
 
-        self.subscription = self.create_subscription(
-            Empty,
-            'episode_end',
-            self.episode_callback,
-            10
-        )
-
-        # Add publisher for simulation reset notifications
-        self.sim_reset_pub = self.create_publisher(
-            Empty,
-            'simulation_reset',
-            10
-        )
-
-        self.pkg = 'RL_robot'
-        self.process = None
-        self.launch_file = 'gazebo_model.launch.py' # The launch file for Gazebo and the model
-
-        # Predefined possible random positions (only used if spawn_location param is empty)
+        # Predefined possible random positions
         self.positions = [
             (0.0, 0.0),
             (6.3, 0.0),
@@ -51,14 +37,69 @@ class EpisodeMonitor(Node):
             (0.0, -6.3)
         ]
 
-        # Initial launch
-        self.launch_system()
+        # Flag to prevent concurrent reset operations
+        self.is_resetting = False
 
-    def get_random_pose_args(self):
-        """Generates random pose arguments from the predefined list."""
+        # Subscribe to episode end signals
+        self.subscription = self.create_subscription(
+            Empty,
+            'episode_end',  # Make sure this is not prefixed with '/'
+            self.episode_callback,
+            10
+        )
+
+        # Publisher for simulation reset notifications (for DQN agent)
+        self.sim_reset_pub = self.create_publisher(
+            Empty,
+            'simulation_reset',
+            10
+        )
+
+        # Publisher for cmd_vel (fallback reset method)
+        self.cmd_vel_pub = self.create_publisher(
+            Twist,
+            'cmd_vel',
+            10
+        )
+
+        self.reset_complete_pub = self.create_publisher(
+            Empty,
+            'reset_complete',
+            10
+        )
+
+        # Initialize service clients after a short delay to ensure services are up
+        time.sleep(2.0)
+        # Client for Gazebo's SetModelState service
+        self.set_model_state_client = self.create_client(
+            SetModelState,
+            '/gazebo/set_model_state'
+        )
+
+        # Client for SLAM Toolbox's reset service
+        self.clear_slam_map_client = self.create_client(
+            Reset,
+            '/slam_toolbox/reset'
+        )
+
+        self.get_logger().info("Episode Monitor initialized")
+
+        # Initial wait for services
+        if not self.set_model_state_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warn("Gazebo set_model_state service not available on initialization")
+        else:
+            self.get_logger().info("Gazebo set_model_state service is available")
+
+        if not self.clear_slam_map_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warn("SLAM Toolbox reset service not available on initialization")
+        else:
+            self.get_logger().info("SLAM Toolbox reset service is available")
+
+    def get_random_pose(self):
+        """Get a random position and orientation from the predefined list."""
         x, y = random.choice(self.positions)
-        self.get_logger().info(f"Using random spawn location: x={x}, y={y}")
-        return [f'robot_spawn_x:={x}', f'robot_spawn_y:={y}']
+        yaw = 0.0
+        return x, y, yaw
 
     def parse_spawn_location(self):
         """Parses the spawn_location parameter string 'x,y'."""
@@ -67,145 +108,202 @@ class EpisodeMonitor(Node):
             if len(parts) == 2:
                 x = float(parts[0].strip())
                 y = float(parts[1].strip())
+                yaw = 0.0  # Random orientation
                 self.get_logger().info(f"Using specified spawn location: x={x}, y={y}")
-                return [f'robot_spawn_x:={x}', f'robot_spawn_y:={y}']
+                return x, y, yaw
             else:
-                self.get_logger().warn(f"Invalid format for spawn_location parameter: '{self.spawn_location_str}'. Expected 'x,y'. Falling back to random.")
+                self.get_logger().warn(
+                    f"Invalid format for spawn_location parameter: '{self.spawn_location_str}'. Expected 'x,y'. Falling back to random.")
                 return None
         except ValueError:
-            self.get_logger().warn(f"Could not parse spawn_location parameter: '{self.spawn_location_str}' into floats. Falling back to random.")
+            self.get_logger().warn(
+                f"Could not parse spawn_location parameter: '{self.spawn_location_str}' into floats. Falling back to random.")
             return None
         except Exception as e:
-             self.get_logger().error(f"Error parsing spawn_location parameter: {e}. Falling back to random.")
-             return None
+            self.get_logger().error(f"Error parsing spawn_location parameter: {e}. Falling back to random.")
+            return None
 
-    def launch_system(self):
-        """Launches the gazebo_model.launch.py with appropriate arguments."""
-        if self.process:
-            self.get_logger().warn("Launch called while a process might still be running. Ensuring proper cleanup.")
-            try:
-                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-                self.process.wait()
-            except Exception as e:
-                self.get_logger().error(f"Error cleaning up existing process: {e}")
-            finally:
-                self.process = None
+    def euler_to_quaternion(self, roll, pitch, yaw):
+        """Convert Euler angles to quaternion."""
+        cy = math.cos(yaw * 0.5)
+        sy = math.sin(yaw * 0.5)
+        cp = math.cos(pitch * 0.5)
+        sp = math.sin(pitch * 0.5)
+        cr = math.cos(roll * 0.5)
+        sr = math.sin(roll * 0.5)
 
-        # --- Determine Pose Arguments ---
-        pose_args = []
-        if self.spawn_location_str: # If a specific location is provided
-            parsed_args = self.parse_spawn_location()
-            if parsed_args:
-                pose_args = parsed_args
-            else: # Fallback to random if parsing failed
-                pose_args = self.get_random_pose_args()
-        else: # No specific location provided, use random
-            pose_args = self.get_random_pose_args()
+        q = [0, 0, 0, 0]
+        q[0] = sr * cp * cy - cr * sp * sy
+        q[1] = cr * sp * cy + sr * cp * sy
+        q[2] = cr * cp * sy - sr * sp * cy
+        q[3] = cr * cp * cy + sr * sp * sy
 
-        optional_args = []
-        if self.nn_path: # If a neural network path is provided
-            optional_args.append(f'nn_path:={self.nn_path}')
-            self.get_logger().info(f"Passing nn_path: {self.nn_path}")
+        return q
+
+    def reset_robot_position(self):
+        """Reset robot position using direct model state command."""
+        # Determine position
+        if self.spawn_location_str:
+            pose_data = self.parse_spawn_location()
+            if pose_data is None:
+                x, y, yaw = self.get_random_pose()
+            else:
+                x, y, yaw = pose_data
         else:
-             self.get_logger().info("No specific nn_path provided.")
+            x, y, yaw = self.get_random_pose()
 
-        # --- Combine Arguments ---
-        full_args = pose_args + optional_args
+        self.get_logger().info(f"Attempting to teleport robot to x={x:.2f}, y={y:.2f}")
 
-        self.get_logger().info(f"🔄 Launching '{self.launch_file}' with args: {full_args}")
-
-        # --- Launch Subprocess ---
         try:
-            cmd = ['ros2', 'launch', self.pkg, self.launch_file] + full_args
-            self.process = subprocess.Popen(
-                cmd,
-                preexec_fn=os.setsid # Use process group to kill all child processes
-            )
-            self.get_logger().info(f"🚀 Launched process with PID: {self.process.pid}")
-        except FileNotFoundError:
-             self.get_logger().error(f"Error: 'ros2' command not found. Is ROS 2 sourced?")
-             rclpy.shutdown()
-             sys.exit(1)
+            # For Gazebo Harmonic, try a different command format
+            import subprocess
+
+            # Format the command for Gazebo Harmonic properly
+            cmd = [
+                'gz', 'service', '-s', '/world/empty/set_pose',
+                '--reqtype', 'gz.msgs.Pose',
+                '--reptype', 'gz.msgs.Boolean',
+                '--timeout', '1000',
+                '--req', f'name: "{self.model_name}", position: {{x: {x}, y: {y}, z: 0.05}}, orientation: {{w: 1.0}}'
+            ]
+
+            self.get_logger().info(f"Executing command: {' '.join(cmd)}")
+
+            # Use non-blocking approach with proper timeout handling
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            try:
+                stdout, stderr = process.communicate(timeout=2.5)
+                output = stdout.decode() if stdout else ""
+                error = stderr.decode() if stderr else ""
+
+                if error:
+                    self.get_logger().warn(f"Command error: {error}")
+
+                # Even if there's an error, continue with the fallback
+                # Just stop the robot via cmd_vel
+                self.get_logger().info("Using cmd_vel to stop robot")
+                stop_cmd = Twist()
+                self.cmd_vel_pub.publish(stop_cmd)
+
+                # Sleep a bit to let the stop command take effect
+                time.sleep(0.5)
+
+                return True
+            except subprocess.TimeoutExpired:
+                # Kill the process if it times out
+                process.kill()
+                self.get_logger().warn("Teleport command timed out")
+
+                # Fallback - stop the robot
+                stop_cmd = Twist()
+                self.cmd_vel_pub.publish(stop_cmd)
+                time.sleep(0.5)
+
+                return True
         except Exception as e:
-            self.get_logger().error(f"Failed to launch subprocess: {e}")
-            rclpy.shutdown()
-            sys.exit(1)
+            self.get_logger().error(f"Error in teleport method: {e}")
+            # Fallback - just stop the robot
+            stop_cmd = Twist()
+            self.cmd_vel_pub.publish(stop_cmd)
+            time.sleep(0.5)
+
+            return True
+
+    def reset_slam_map(self):
+        """Reset the SLAM map using the slam_toolbox reset service."""
+        if not self.clear_slam_map_client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().warn("SLAM reset service not available")
+            return False
+
+        req = Reset.Request()
+        future = self.clear_slam_map_client.call_async(req)
+
+        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+
+        if future.result() is not None:
+            self.get_logger().info("SLAM map reset via service call succeeded")
+            return True
+        else:
+            self.get_logger().error("Failed to reset SLAM map via service call")
+            return False
 
     def episode_callback(self, msg):
-        self.get_logger().info("📩 Episode ended signal received — restarting system.")
-        self.restart_system()
+        """Handle episode end signal."""
+        # Check for too-frequent resets
+        current_time = time.time()
+        time_since_last = current_time - self.last_reset_time
 
-    def restart_system(self):
-        """Terminates the current simulation process and launches a new one."""
-        if self.process and self.process.poll() is None:  # Check if process exists and is running
-            self.get_logger().info(f"Terminating process group {os.getpgid(self.process.pid)}...")
-            try:
-                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)  # Send SIGTERM to the whole process group
-                self.process.wait(timeout=5)  # Wait for graceful termination
-                self.get_logger().info("Process terminated.")
-            except ProcessLookupError:
-                self.get_logger().warn("Process group already terminated.")
-            except subprocess.TimeoutExpired:
-                self.get_logger().warn("Process did not terminate gracefully after 5s. Sending SIGKILL.")
-                try:
-                    os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)  # Force kill
-                    self.process.wait(timeout=2)
-                except Exception as e:
-                    self.get_logger().error(f"Error during SIGKILL: {e}")
-            except Exception as e:
-                self.get_logger().error(f"Error terminating process: {e}")
-            finally:
-                self.process = None  # Ensure process handle is cleared
-        elif self.process:
-            self.get_logger().info("Process was already terminated.")
-            self.process = None  # Clear handle if process finished but handle wasn't cleared
+        if time_since_last < 1.0:  # Less than 1 second since last reset
+            self.reset_count += 1
+            if self.reset_count > 3:  # If we get more than 3 rapid signals
+                self.get_logger().warn(f"Too many resets in quick succession ({self.reset_count}), adding delay")
+                time.sleep(2.0)  # Longer cooldown
+                self.reset_count = 0
         else:
-            self.get_logger().info("No process was running.")
+            self.reset_count = 0  # Reset the counter if enough time has passed
 
-        # Launch a new instance
-        self.launch_system()
+        self.last_reset_time = current_time
 
-        # Allow the simulation to start up
-        self.get_logger().info("Waiting for simulation to stabilize...")
-        time.sleep(2.0)  # Give the simulation time to start
+        # Prevent concurrent resets
+        if self.is_resetting:
+            self.get_logger().info("Reset already in progress, ignoring episode_end signal")
+            return
 
-        # Notify about the simulation reset
+        self.get_logger().info("📩 Episode ended signal received — resetting robot")
+
+        self.is_resetting = True
+        try:
+            self.reset_environment()
+        finally:
+            time.sleep(0.5)
+            self.is_resetting = False
+
+    def reset_environment(self):
+        """Reset the robot position and SLAM map."""
+        # Reset robot position
+        position_reset = self.reset_robot_position()
+
+        # Longer delay to let physics stabilize
+        self.get_logger().info("Waiting for robot position reset to stabilize...")
+        time.sleep(2.0)
+
+        # Reset SLAM map
+        self.get_logger().info("Attempting to reset SLAM map...")
+        map_reset = self.reset_slam_map()
+
+        # Allow more time for SLAM to reset
+        self.get_logger().info("Waiting for SLAM map reset to complete...")
+        time.sleep(3.0)
+
+        # Publish simulation reset notification
         self.get_logger().info("Publishing simulation reset notification")
         self.sim_reset_pub.publish(Empty())
 
+        self.get_logger().info(f"Environment reset completed: position={position_reset}, map={map_reset}")
+
     def shutdown_hook(self):
-        """Cleanly shut down the subprocess when the node is terminated."""
-        self.get_logger().info("Shutting down EpisodeMonitor node.")
-        if self.process and self.process.poll() is None:
-            self.get_logger().info(f"Terminating subprocess group {os.getpgid(self.process.pid)} during shutdown.")
-            try:
-                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-                self.process.wait(timeout=5)
-            except Exception as e:
-                self.get_logger().warn(f"Error during shutdown termination: {e}. Trying SIGKILL.")
-                try:
-                    os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
-                    self.process.wait(timeout=2)
-                except Exception as kill_e:
-                    self.get_logger().error(f"Error during shutdown SIGKILL: {kill_e}")
-            finally:
-                self.process = None
+        """Clean up resources when the node is shutting down."""
+        self.get_logger().info("Shutting down EpisodeMonitor node")
+        # Nothing special to clean up in this implementation
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = EpisodeMonitor()
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('Keyboard interrupt received, shutting down.')
+        node.get_logger().info('Keyboard interrupt received, shutting down')
     finally:
-        # Ensure subprocess is killed before destroying the node
+        # Clean up
         node.shutdown_hook()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
-        print("EpisodeMonitor shutdown complete.")
+        print("EpisodeMonitor shutdown complete")
+
 
 if __name__ == '__main__':
     main()
