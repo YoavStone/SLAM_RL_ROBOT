@@ -283,7 +283,7 @@ class DQLAgent(Node):
 
             # Publish episode end signal for external listeners (like episode_monitor)
             self.episode_end_pub.publish(Empty())
-            time.sleep(0.5)
+            time.sleep(7.0)
 
 
         # --- Learning Step ---
@@ -349,7 +349,7 @@ class DQLAgent(Node):
 
             # Publish episode end signal
             self.episode_end_pub.publish(Empty())
-            time.sleep(0.5)
+            time.sleep(7.0)
 
 
     def learn_step(self):
