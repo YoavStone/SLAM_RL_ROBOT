@@ -51,7 +51,7 @@ class GazeboEnv(Node):
         # Termination indications
         self.episode_start_time = time.time()
         self.total_cells = None
-        self.explored_threshold = 0.90  # 90%
+        self.explored_threshold = 0.93  # 93%
         self.max_episode_duration = 120  # seconds
 
         # Publishers and subscribers
@@ -284,9 +284,9 @@ class GazeboEnv(Node):
         return len(self.actions)
 
     def percent_explored(self):
-        if self.total_cells is None or not hasattr(self, 'previous_map') or len(self.previous_map) == 0:
+        if self.total_cells is None or not hasattr(self, 'map_processed') or len(self.map_processed) == 0:
             return 0.0
-        known_cells = sum(1 for val in self.previous_map if val != -1.0)
+        known_cells = sum(1 for val in self.map_processed if val != -1.0)
         return known_cells / self.total_cells
 
     def dis_to_wall_to_punishment(self, dt, new_dis):

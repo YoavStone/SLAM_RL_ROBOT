@@ -1,4 +1,3 @@
-# combined_launch.py
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -10,10 +9,9 @@ import os
 
 
 def generate_launch_description():
-
     namePackage = 'RL_robot'
 
-    # launch arguments
+    # Launch arguments
     learning_mode = LaunchConfiguration('learning_mode')
     model_path = LaunchConfiguration('model_path')
     spawn_location = LaunchConfiguration('spawn_location')
@@ -32,7 +30,7 @@ def generate_launch_description():
 
     spawn_location_arg = DeclareLaunchArgument(
         'spawn_location',
-        default_value='6.3,0',
+        default_value='',
         description='Initial spawn location for the robot in x,y format'
     )
 
@@ -47,7 +45,7 @@ def generate_launch_description():
         }.items()
     )
 
-    # Launch the episode monitor which will manage the simulation restarts
+    # Launch the episode monitor which will manage the simulation resets
     episode_monitor_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory(namePackage), 'launch', 'episode_monitor.launch.py')

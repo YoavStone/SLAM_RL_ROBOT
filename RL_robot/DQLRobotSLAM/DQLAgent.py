@@ -15,7 +15,7 @@ from std_msgs.msg import Empty
 
 from .DQN import DQN  # Assuming DQN
 from .DQL_ENV import DQLEnv # Assuming DQL_ENV
-from ..sim_control.sim_reset_handler import SimulationResetHandler
+from sim_control.sim_reset_handler import SimulationResetHandler
 
 
 # Hyperparameters (Keep relevant ones)
@@ -299,7 +299,7 @@ class DQLAgent(Node):
         """Executes the learned policy without exploration or learning."""
         # Skip execution during reset
         if self.reset_handler.is_reset_in_progress():
-            self.get_logger().debug("Skipping execution step during reset")
+            self.get_logger().debug("Skipping training step during reset")
             return
         if self.current_obs is None:
             self.current_obs, _ = self.env.reset()
