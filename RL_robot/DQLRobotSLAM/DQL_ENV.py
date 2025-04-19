@@ -55,11 +55,11 @@ class GazeboEnv(Node):
         self.max_episode_duration = 120  # seconds
 
         # Publishers and subscribers
-        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        self.scan_sub = self.create_subscription(LaserScan, 'scan', self.scan_callback, 10)
-        self.odom_sub = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
-        self.map_sub = self.create_subscription(OccupancyGrid, 'map', self.map_callback, 10)
-        self.slam_pose_sub = self.create_subscription(PoseWithCovarianceStamped, 'pose', self.slam_pose_callback, 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+        self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.map_sub = self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
+        self.slam_pose_sub = self.create_subscription(PoseWithCovarianceStamped, '/pose', self.slam_pose_callback, 10)
 
         # Gym-like interface variables
         self.observation_space = None  # Will be initialized after first data is received
@@ -273,6 +273,9 @@ class GazeboEnv(Node):
         """Get the current state representation"""
         # Use SLAM pose if available, otherwise fall back to odometry
         position = self.slam_pose if self.slam_pose is not None else self.pos
+        print("position: ", position)
+        print("slam pos: ", self.slam_pose)
+        print("odom pos: ", self.pos)
         return position + self.measured_distance_to_walls + self.map_processed
 
     def get_state_size(self):

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty
@@ -8,6 +9,11 @@ from geometry_msgs.msg import Pose, Twist
 import random
 import math
 import time
+import subprocess
+from tf2_ros import StaticTransformBroadcaster
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster
+
 
 
 class EpisodeMonitor(Node):
@@ -43,7 +49,7 @@ class EpisodeMonitor(Node):
         # Subscribe to episode end signals
         self.subscription = self.create_subscription(
             Empty,
-            'episode_end',  # Make sure this is not prefixed with '/'
+            'episode_end',
             self.episode_callback,
             10
         )
@@ -70,6 +76,7 @@ class EpisodeMonitor(Node):
 
         # Initialize service clients after a short delay to ensure services are up
         time.sleep(2.0)
+
         # Client for Gazebo's SetModelState service
         self.set_model_state_client = self.create_client(
             SetModelState,
@@ -81,6 +88,8 @@ class EpisodeMonitor(Node):
             Reset,
             '/slam_toolbox/reset'
         )
+
+        self.tf_broadcaster = TransformBroadcaster(self)
 
         self.get_logger().info("Episode Monitor initialized")
 
@@ -108,7 +117,7 @@ class EpisodeMonitor(Node):
             if len(parts) == 2:
                 x = float(parts[0].strip())
                 y = float(parts[1].strip())
-                yaw = 0.0  # Random orientation
+                yaw = 0.0  # Fixed orientation
                 self.get_logger().info(f"Using specified spawn location: x={x}, y={y}")
                 return x, y, yaw
             else:
@@ -154,11 +163,17 @@ class EpisodeMonitor(Node):
 
         self.get_logger().info(f"Attempting to teleport robot to x={x:.2f}, y={y:.2f}")
 
-        try:
-            # For Gazebo Harmonic, try a different command format
-            import subprocess
+        # First stop the robot completely
+        stop_cmd = Twist()
+        self.cmd_vel_pub.publish(stop_cmd)
 
-            # Format the command for Gazebo Harmonic properly
+        # Send it multiple times to ensure it's received
+        for _ in range(5):
+            self.cmd_vel_pub.publish(stop_cmd)
+            time.sleep(0.05)
+
+        try:
+            # For Gazebo Harmonic, use CLI command
             cmd = [
                 'gz', 'service', '-s', '/world/empty/set_pose',
                 '--reqtype', 'gz.msgs.Pose',
@@ -168,8 +183,6 @@ class EpisodeMonitor(Node):
             ]
 
             self.get_logger().info(f"Executing command: {' '.join(cmd)}")
-
-            # Use non-blocking approach with proper timeout handling
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             try:
@@ -180,52 +193,73 @@ class EpisodeMonitor(Node):
                 if error:
                     self.get_logger().warn(f"Command error: {error}")
 
-                # Even if there's an error, continue with the fallback
-                # Just stop the robot via cmd_vel
-                self.get_logger().info("Using cmd_vel to stop robot")
-                stop_cmd = Twist()
-                self.cmd_vel_pub.publish(stop_cmd)
-
-                # Sleep a bit to let the stop command take effect
+                # Sleep to let physics stabilize
                 time.sleep(0.5)
-
                 return True
             except subprocess.TimeoutExpired:
-                # Kill the process if it times out
                 process.kill()
                 self.get_logger().warn("Teleport command timed out")
-
-                # Fallback - stop the robot
-                stop_cmd = Twist()
-                self.cmd_vel_pub.publish(stop_cmd)
-                time.sleep(0.5)
-
-                return True
+                return False
         except Exception as e:
             self.get_logger().error(f"Error in teleport method: {e}")
-            # Fallback - just stop the robot
-            stop_cmd = Twist()
-            self.cmd_vel_pub.publish(stop_cmd)
-            time.sleep(0.5)
+            return False
 
-            return True
-
+    # Update your reset_slam_map method:
     def reset_slam_map(self):
         """Reset the SLAM map using the slam_toolbox reset service."""
+        # First, publish a temporary map->odom transform
+        temp_transform = TransformStamped()
+        temp_transform.header.stamp = self.get_clock().now().to_msg()
+        temp_transform.header.frame_id = "map"
+        temp_transform.child_frame_id = "odom"
+
+        # Identity transform
+        temp_transform.transform.translation.x = 0.0
+        temp_transform.transform.translation.y = 0.0
+        temp_transform.transform.translation.z = 0.0
+        temp_transform.transform.rotation.x = 0.0
+        temp_transform.transform.rotation.y = 0.0
+        temp_transform.transform.rotation.z = 0.0
+        temp_transform.transform.rotation.w = 1.0
+
+        # Publish transform continuously during reset
+        publish_transform = True
+
+        # Start a separate thread to publish the transform
+        import threading
+        def keep_transform_alive():
+            while publish_transform:
+                temp_transform.header.stamp = self.get_clock().now().to_msg()
+                self.tf_broadcaster.sendTransform(temp_transform)
+                time.sleep(0.01)
+
+        transform_thread = threading.Thread(target=keep_transform_alive)
+        transform_thread.start()
+
+        # Now try to reset SLAM
         if not self.clear_slam_map_client.wait_for_service(timeout_sec=2.0):
             self.get_logger().warn("SLAM reset service not available")
+            publish_transform = False
+            transform_thread.join()
             return False
 
         req = Reset.Request()
         future = self.clear_slam_map_client.call_async(req)
 
-        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+        # Wait for result with timeout
+        start_time = time.time()
+        while not future.done() and (time.time() - start_time) < 3.0:
+            rclpy.spin_once(self, timeout_sec=0.1)
 
-        if future.result() is not None:
+        # Stop publishing the temporary transform
+        publish_transform = False
+        transform_thread.join()
+
+        if future.done():
             self.get_logger().info("SLAM map reset via service call succeeded")
             return True
         else:
-            self.get_logger().error("Failed to reset SLAM map via service call")
+            self.get_logger().error("Failed to reset SLAM map via service call (timeout)")
             return False
 
     def episode_callback(self, msg):
@@ -261,6 +295,11 @@ class EpisodeMonitor(Node):
 
     def reset_environment(self):
         """Reset the robot position and SLAM map."""
+        # Stop the robot
+        stop_cmd = Twist()
+        self.cmd_vel_pub.publish(stop_cmd)
+        time.sleep(0.5)
+
         # Reset robot position
         position_reset = self.reset_robot_position()
 
@@ -272,6 +311,9 @@ class EpisodeMonitor(Node):
         self.get_logger().info("Attempting to reset SLAM map...")
         map_reset = self.reset_slam_map()
 
+        # Short delay
+        time.sleep(1.0)
+
         # Allow more time for SLAM to reset
         self.get_logger().info("Waiting for SLAM map reset to complete...")
         time.sleep(3.0)
@@ -280,7 +322,13 @@ class EpisodeMonitor(Node):
         self.get_logger().info("Publishing simulation reset notification")
         self.sim_reset_pub.publish(Empty())
 
+        # Wait for everything to settle
+        time.sleep(1.0)
+
         self.get_logger().info(f"Environment reset completed: position={position_reset}, map={map_reset}")
+
+        # Signal completion
+        self.reset_complete_pub.publish(Empty())
 
     def shutdown_hook(self):
         """Clean up resources when the node is shutting down."""
@@ -302,7 +350,7 @@ def main(args=None):
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
-        print("EpisodeMonitor shutdown complete")
+        print("Episode Monitor shutdown complete")
 
 
 if __name__ == '__main__':

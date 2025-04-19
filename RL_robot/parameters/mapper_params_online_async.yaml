@@ -13,6 +13,7 @@ slam_toolbox:
     odom_frame: odom
     map_frame: map
     base_frame: base_footprint
+    odom_topic: /odom  # Make sure this is explicitly set
     scan_topic: /scan
     use_map_saver: true
     mode: mapping # mapping / localization
