@@ -12,10 +12,10 @@ from gymnasium import spaces
 from .cropped_map_visualizer import MapVisualizationNode
 
 # Constants
-CONTINUES_PUNISHMENT = -2  # amount of punishment for every sec wasted
+CONTINUES_PUNISHMENT = -5  # amount of punishment for every sec wasted
 HIT_WALL_PUNISHMENT = -200
 CLOSE_TO_WALL_PUNISHMENT = -0.1
-EXPLORATION_REWARD = 1.0
+EXPLORATION_REWARD = 1.5
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
 ANGULAR_SPEED = 0.3 * 2  # irl: 0.3  # rad/s
@@ -301,9 +301,6 @@ class GazeboEnv(Node):
         """Get the current state representation"""
         # Use SLAM pose if available, otherwise fall back to odometry
         position = self.slam_pose if self.slam_pose is not None else self.pos
-        print("position: ", position)
-        print("slam pos: ", self.slam_pose)
-        print("odom pos: ", self.pos)
         return position + self.measured_distance_to_walls + self.map_processed
 
     def get_state_size(self):
@@ -325,13 +322,34 @@ class GazeboEnv(Node):
         closest = min(new_dis)
         is_terminated = False
 
-        if closest < self.rad_of_robot:  # Robot is too close to a wall
-            punishment += HIT_WALL_PUNISHMENT
-            is_terminated = True
-        elif self.rad_of_robot + 0.007 < closest < self.rad_of_robot * 1.3:  # if close but not too close slight punishment
-            punishment = (CLOSE_TO_WALL_PUNISHMENT / (closest - self.rad_of_robot) ** 2) * dt
-        elif self.rad_of_robot + 0.007 > closest:
-            punishment = HIT_WALL_PUNISHMENT
+        # Define the danger zone
+        danger_zone_start = self.rad_of_robot * 2.0  # Start increasing punishment from 2x radius
+        danger_zone_end = self.rad_of_robot  # Max punishment at actual collision
+
+        # Check for immediate collision
+        if closest < self.rad_of_robot:
+            return HIT_WALL_PUNISHMENT, True
+
+        # If outside danger zone, no punishment
+        if closest >= danger_zone_start:
+            return 0, False
+
+        # In danger zone - normalize to 0-1 range
+        danger_fraction = (danger_zone_start - closest) / (danger_zone_start - danger_zone_end)
+
+        # Modified sigmoid that reaches full punishment at the end
+        # We want the steep middle part to reach -200
+        sigmoid_steepness = 12  # Higher value = steeper transition
+        shift = 0.7  # Shift the sigmoid curve to make it steeper at the end
+
+        # This modified sigmoid will approach -200 more quickly as danger_fraction increases
+        sigmoid_value = 1 / (1 + math.exp(-sigmoid_steepness * (danger_fraction - shift)))
+
+        # Scale to punishment range - we multiply by a factor > 1 to ensure it reaches full punishment
+        punishment = -sigmoid_value * abs(HIT_WALL_PUNISHMENT) * 0.9  # slight discount
+
+        # Clip to maximum punishment (the smaller punishment)
+        punishment = max(punishment, HIT_WALL_PUNISHMENT)
 
         return punishment, is_terminated
 

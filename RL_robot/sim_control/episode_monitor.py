@@ -52,11 +52,11 @@ class EpisodeMonitor(Node):
 
         # Predefined possible random positions
         self.positions = [
-            (0.0, 0.0),
-            (6.3, 0.0),
-            (-6.3, 0.0),
-            (0.0, 6.3),
-            (0.0, -6.3)
+            [0.0, 0.0],
+            [6.3, 0.0],
+            [-6.3, 0.0],
+            [0.0, 6.3],
+            [0.0, -6.3]
         ]
 
         # Get parameter values
@@ -69,10 +69,11 @@ class EpisodeMonitor(Node):
             try:
                 # Try to parse as "x,y" format
                 x, y = self.spawn_location_str.split(',')
-                self.target_spawn_position = (float(x.strip()), float(y.strip()))
+                self.target_spawn_position = [float(x.strip()), float(y.strip())]
                 self.get_logger().info(f"Using provided spawn location: {self.target_spawn_position}")
             except ValueError:
-                self.get_logger().warn(f"Could not parse spawn_location '{self.spawn_location_str}'. Using random position.")
+                self.get_logger().warn(
+                    f"Could not parse spawn_location '{self.spawn_location_str}'. Using random position.")
                 self.target_spawn_position = None
 
         # Flag to prevent concurrent reset operations
@@ -146,58 +147,24 @@ class EpisodeMonitor(Node):
 
     def get_target_position(self):
         """Get the target position for teleportation"""
+        yaw = random.choice([0.0, math.pi / 2, math.pi, math.pi * 3 / 2])
         if self.target_spawn_position is not None:
-            return self.target_spawn_position
+            return [self.target_spawn_position[0], self.target_spawn_position[1], yaw]
         else:
             # Choose a random position from predefined positions
-            return random.choice(self.positions)
+            chosen_position = random.choice(self.positions)
+            return [chosen_position[0], chosen_position[1], yaw]
 
-    def teleport_robot_up(self):
-        """Teleport the robot 200m up in the air"""
-        self.get_logger().info("Teleporting robot 200m up in the air")
-
+    def teleport_robot(self):
+        """Teleport the robot to target position after odom recalibration"""
         # Get target x, y coordinates
-        target_x, target_y = self.get_target_position()
-        self.get_logger().info(f"Target position for teleport: ({target_x}, {target_y})")
-        try:
-            # Format the command for Gazebo Harmonic
-            cmd = [
-                'gz', 'service', '-s', '/world/empty/set_pose',
-                '--reqtype', 'gz.msgs.Pose',
-                '--reptype', 'gz.msgs.Boolean',
-                '--timeout', '1000',
-                '--req', f'name: "{self.model_name}", position: {{x: {target_x}, y: {target_y}, z: 200.0}}, orientation: {{w: 1.0}}'
-            ]
+        target_x, target_y, yaw = self.get_target_position()
+        print(f"Teleporting robot to: ({target_x}, {target_y})")
+        qz = math.sin(yaw / 2)
+        qw = math.cos(yaw / 2)
+        print(f"Using quaternion: w={qw}, z={qz} for yaw={yaw}")
 
-            self.get_logger().info(f"Executing command: {' '.join(cmd)}")
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-            try:
-                stdout, stderr = process.communicate(timeout=2.5)
-                output = stdout.decode() if stdout else ""
-                error = stderr.decode() if stderr else ""
-
-                if error:
-                    self.get_logger().warn(f"Command error: {error}")
-
-                # Sleep to let gravity affect the robot
-                time.sleep(1.0)
-                return True
-            except subprocess.TimeoutExpired:
-                process.kill()
-                self.get_logger().warn("Teleport command timed out")
-                return False
-        except Exception as e:
-            self.get_logger().error(f"Error in teleport method: {e}")
-            return False
-
-    def teleport_to_origin(self):
-        """Teleport the robot to exactly x,y,0 with zero orientation after odom correction"""
-        self.get_logger().info("Teleporting robot to exact origin (x,y,0) with zero orientation")
-
-        # Get target x, y coordinates
-        target_x, target_y = self.get_target_position()
-        self.get_logger().info(f"Target position for teleport: ({target_x}, {target_y})")
         try:
             # Format the command for Gazebo Harmonic
             cmd = [
@@ -206,10 +173,10 @@ class EpisodeMonitor(Node):
                 '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req',
-                f'name: "{self.model_name}", position: {{x: {target_x}, y: {target_y}, z: 0.0}}, orientation: {{w: 1.0, x: 0.0, y: 0.0, z: 0.0}}'
+                f'name: "{self.model_name}", position: {{x: {target_x}, y: {target_y}, z: 0.0}}, orientation: {{w: {qw}, x: 0.0, y: 0.0, z: {qz}}}'
             ]
 
-            self.get_logger().info(f"Executing command: {' '.join(cmd)}")
+            print(f"Executing command: {' '.join(cmd)}")
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             try:
@@ -220,21 +187,23 @@ class EpisodeMonitor(Node):
                 if error:
                     self.get_logger().warn(f"Command error: {error}")
 
-                self.get_logger().info("Final teleport to origin successful")
+                self.get_logger().info("Teleport successful")
                 # Wait a moment for physics to settle
                 time.sleep(1.0)
 
-                # Now reset SLAM and finalize
+                # After teleportation, reset SLAM and finalize
                 self.reset_slam_and_finalize()
                 return True
+
             except subprocess.TimeoutExpired:
                 process.kill()
-                self.get_logger().warn("Final teleport command timed out")
+                self.get_logger().warn("Teleport command timed out")
                 # Still try to reset SLAM and finalize even if teleport fails
                 self.reset_slam_and_finalize()
                 return False
+
         except Exception as e:
-            self.get_logger().error(f"Error in final teleport method: {e}")
+            self.get_logger().error(f"Error in teleport method: {e}")
             # Still try to reset SLAM and finalize even if teleport fails
             self.reset_slam_and_finalize()
             return False
@@ -346,7 +315,7 @@ class EpisodeMonitor(Node):
                                        f"Angle diff: {angle_diff:.2f}, Current yaw: {current_yaw:.2f}")
             else:
                 # Now that we're facing the target, move forward
-                linear_speed = 0.5*distance  # Lower speed for more precision
+                linear_speed = 0.5 * distance  # Lower speed for more precision
                 cmd.linear.x = linear_speed
 
                 # Still apply minor angular corrections while moving
@@ -374,8 +343,8 @@ class EpisodeMonitor(Node):
                 self.control_timer.cancel()
                 self.control_timer = None
 
-                # Once we've corrected odom, do a final teleport to origin and then reset SLAM
-                self.teleport_to_origin()
+                # Once odom is corrected, teleport the robot to the target position
+                self.teleport_robot()
                 return
 
             # Set only angular velocity for pure rotation
@@ -431,124 +400,40 @@ class EpisodeMonitor(Node):
             self.get_logger().info("Reset already in progress, ignoring episode_end signal")
             return
 
-        self.get_logger().info("📩 Episode ended signal received — resetting robot")
+        self.get_logger().info("📩 Episode ended signal received — starting reset process")
 
         self.is_resetting = True
         try:
+            # Start with odom correction and then teleport
             self.reset_environment()
         finally:
             self.is_resetting = False
 
     def reset_environment(self):
-        """Reset the robot position by teleporting up and driving to origin"""
-        # Set up a timer for repeated teleportation
-        self.teleport_attempt_count = 0
-        self.max_teleport_attempts = 10  # Maximum number of teleport attempts
-
-        # Start the teleport cycle
-        self.teleport_and_correct()
-
-    def teleport_and_correct(self):
-        """Teleport the robot up and start correction if odom is within valid range"""
-        self.teleport_attempt_count += 1
-
-        if self.teleport_attempt_count > self.max_teleport_attempts:
-            self.get_logger().error(f"Exceeded maximum teleport attempts ({self.max_teleport_attempts})")
-            self.reset_slam_and_finalize()
-            return
-
-        # Teleport the robot up
-        teleport_success = self.teleport_robot_up()
-
-        if not teleport_success:
-            self.get_logger().error("Teleport failed, trying again...")
-            # Schedule another teleport attempt after a short delay
-            self.teleport_timer = self.create_timer(1.0, lambda: self.timer_callback('teleport'))
-            return
-
-        self.get_logger().info(f"Teleport attempt {self.teleport_attempt_count} successful, letting robot fall...")
-
-        # Let the robot fall for a bit, then check if we can start correction
-        self.check_timer = self.create_timer(1.0, lambda: self.timer_callback('check'))
+        """Reset the environment by first correcting odometry then teleporting"""
+        # Directly start the odom correction (no teleport first)
+        self.start_odom_correction()
 
     def timer_callback(self, action_type):
         """Callback for various timers"""
-        if action_type == 'teleport':
-            # Cancel the timer
-            if hasattr(self, 'teleport_timer') and self.teleport_timer:
-                self.teleport_timer.cancel()
-                self.teleport_timer = None
-            # Retry teleport
-            self.teleport_and_correct()
-        elif action_type == 'check':
-            # Cancel the timer
-            if hasattr(self, 'check_timer') and self.check_timer:
-                self.check_timer.cancel()
-                self.check_timer = None
-            # Check position and start correction
-            self.check_and_start_correction()
-        elif action_type == 'retry_check':
-            # Cancel the timer
-            if hasattr(self, 'retry_check_timer') and self.retry_check_timer:
-                self.retry_check_timer.cancel()
-                self.retry_check_timer = None
-            # Check position again
-            self.check_and_start_correction()
-        elif action_type == 'retry_teleport':
-            # Cancel the timer
-            if hasattr(self, 'retry_teleport_timer') and self.retry_teleport_timer:
-                self.retry_teleport_timer.cancel()
-                self.retry_teleport_timer = None
-            # Try teleporting again
-            self.teleport_and_correct()
-        elif action_type == 'correction_timeout':
+        if action_type == 'correction_timeout':
             # Handle timeout in correction loop
-            self.get_logger().warn("Odom correction timeout reached, trying teleport again")
+            self.get_logger().warn("Odom correction timeout reached, proceeding to teleport anyway")
 
             # Cancel the control timer
             if self.control_timer:
                 self.control_timer.cancel()
                 self.control_timer = None
 
-            # Try teleporting again
-            self.teleport_and_correct()
-
-    def check_and_start_correction(self):
-        """Check if the robot is in a valid position to start odom correction"""
-        if self.current_odom is None:
-            self.get_logger().warn("No odometry data available, waiting...")
-            # Schedule another check after a short delay
-            self.retry_check_timer = self.create_timer(0.5, lambda: self.timer_callback('retry_check'))
-            return
-
-        # Get current position
-        current_x = self.current_odom.pose.pose.position.x
-        current_y = self.current_odom.pose.pose.position.y
-        current_z = self.current_odom.pose.pose.position.z
-
-        # Calculate distance to origin (xy plane)
-        distance = math.sqrt(current_x ** 2 + current_y ** 2)
-
-        # Check if position is valid for starting correction
-        # The robot should be close to origin in xy plane
-        if distance < 5.0 and current_z < 1.0:  # Within 5m of origin XY and close to ground
-            self.get_logger().info(
-                f"Robot in good position after teleport: ({current_x:.2f}, {current_y:.2f}, {current_z:.2f})")
-            # Start the odom correction
-            self.start_odom_correction()
-        else:
-            # Directly retry the full teleport_and_correct process rather than just teleporting up
-            self.get_logger().info(
-                f"Position not ideal: ({current_x:.2f}, {current_y:.2f}, {current_z:.2f}), restarting teleport cycle...")
-            # Schedule another full teleport cycle (this will teleport up and continue the process)
-            self.retry_teleport_timer = self.create_timer(0.5, lambda: self.timer_callback('retry_teleport'))
+            # Even if correction fails, still attempt to teleport and continue
+            self.teleport_robot()
 
     def reset_slam_and_finalize(self):
-        """Reset SLAM map and finalize the reset process after position and orientation correction"""
-        # Now reset the SLAM map after robot is at correct position and orientation
+        """Reset SLAM map and finalize the reset process after teleportation"""
+        # Reset the SLAM map after robot is at the desired position
         time.sleep(2.0)
 
-        self.get_logger().info("Robot at origin with zero yaw. Now resetting SLAM map...")
+        self.get_logger().info("Robot at target position. Now resetting SLAM map...")
         map_reset = self.reset_slam_map()
         time.sleep(5.0)
 

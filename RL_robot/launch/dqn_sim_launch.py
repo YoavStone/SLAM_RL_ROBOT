@@ -12,23 +12,15 @@ def generate_launch_description():
     namePackage = 'RL_robot'
 
     # Launch arguments
-    learning_mode = LaunchConfiguration('learning_mode')
-    model_path = LaunchConfiguration('model_path')
     spawn_location = LaunchConfiguration('spawn_location')
     robot_spawn_x = LaunchConfiguration('robot_spawn_x')
     robot_spawn_y = LaunchConfiguration('robot_spawn_y')
-
-    learning_mode_arg = DeclareLaunchArgument(
-        'learning_mode',
-        default_value='true',
-        description='Whether the agent is in learning mode (true) or execution mode (false)'
-    )
-
-    model_path_arg = DeclareLaunchArgument(
-        'model_path',
-        default_value='',
-        description='Path to a saved model to load. If empty, starts with a fresh model.'
-    )
+    # dql parameters
+    learning_mode = LaunchConfiguration('learning_mode')
+    model_path = LaunchConfiguration('model_path')
+    epsilon_start = LaunchConfiguration('epsilon_start')
+    epsilon_end = LaunchConfiguration('epsilon_end')
+    epsilon_decay = LaunchConfiguration('epsilon_decay')
 
     spawn_location_arg = DeclareLaunchArgument(
         'spawn_location',
@@ -47,6 +39,37 @@ def generate_launch_description():
         'robot_spawn_y',
         default_value='0.0',
         description='Robot spawn Y position'
+    )
+
+    learning_mode_arg = DeclareLaunchArgument(
+        'learning_mode',
+        default_value='true',
+        description='Whether the agent is in learning mode (true) or execution mode (false)'
+    )
+
+    model_path_arg = DeclareLaunchArgument(
+        'model_path',
+        default_value='',
+        description='Path to a saved model to load. If empty, starts with a fresh model.'
+    )
+
+    # Epsilon launch arguments with defaults
+    epsilon_start_arg = DeclareLaunchArgument(
+        'epsilon_start',
+        default_value='1.0',
+        description='Initial exploration rate (epsilon) for the agent'
+    )
+
+    epsilon_end_arg = DeclareLaunchArgument(
+        'epsilon_end',
+        default_value='0.02',
+        description='Final exploration rate (epsilon) for the agent'
+    )
+
+    epsilon_decay_arg = DeclareLaunchArgument(
+        'epsilon_decay',
+        default_value='10000',
+        description='Number of steps over which epsilon decays from start to end value'
     )
 
     # Launch Gazebo and the robot
@@ -70,18 +93,24 @@ def generate_launch_description():
         }.items()
     )
 
-    # Launch the DQN agent
+    # Launch the DQN agent with epsilon parameters
     dqn_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory(namePackage), 'launch', 'slam_dqn_agent_launch.py')
         ]),
         launch_arguments={
             'learning_mode': learning_mode,
-            'model_path': model_path
+            'model_path': model_path,
+            'epsilon_start': epsilon_start,
+            'epsilon_end': epsilon_end,
+            'epsilon_decay': epsilon_decay
         }.items()
     )
 
     return LaunchDescription([
+        epsilon_start_arg,
+        epsilon_end_arg,
+        epsilon_decay_arg,
         learning_mode_arg,
         model_path_arg,
         spawn_location_arg,

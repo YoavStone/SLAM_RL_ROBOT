@@ -9,6 +9,10 @@ def generate_launch_description():
     # Launch arguments
     learning_mode = LaunchConfiguration('learning_mode')
     model_path = LaunchConfiguration('model_path')
+    # Add epsilon parameters
+    epsilon_start = LaunchConfiguration('epsilon_start')
+    epsilon_end = LaunchConfiguration('epsilon_end')
+    epsilon_decay = LaunchConfiguration('epsilon_decay')
 
     # Declare launch arguments
     learning_mode_arg = DeclareLaunchArgument(
@@ -21,6 +25,25 @@ def generate_launch_description():
         'model_path',
         default_value='',
         description='Path to a saved model to load. If empty, starts with a fresh model.'
+    )
+
+    # Add epsilon launch arguments with defaults
+    epsilon_start_arg = DeclareLaunchArgument(
+        'epsilon_start',
+        default_value='1.0',
+        description='Initial exploration rate (epsilon) for the agent'
+    )
+
+    epsilon_end_arg = DeclareLaunchArgument(
+        'epsilon_end',
+        default_value='0.02',
+        description='Final exploration rate (epsilon) for the agent'
+    )
+
+    epsilon_decay_arg = DeclareLaunchArgument(
+        'epsilon_decay',
+        default_value='30000',
+        description='Number of steps over which epsilon decays from start to end value'
     )
 
     # Get the path to your virtual environment
@@ -62,12 +85,18 @@ def generate_launch_description():
         env=env,
         parameters=[
             {'learning_mode': learning_mode},
-            {'model_path': model_path}
+            {'model_path': model_path},
+            {'epsilon_start': epsilon_start},
+            {'epsilon_end': epsilon_end},
+            {'epsilon_decay': epsilon_decay}
         ],
     )
 
     return LaunchDescription([
         learning_mode_arg,
         model_path_arg,
+        epsilon_start_arg,
+        epsilon_end_arg,
+        epsilon_decay_arg,
         dqn_node
     ])

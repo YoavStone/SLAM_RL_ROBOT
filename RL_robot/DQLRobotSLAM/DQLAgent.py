@@ -13,20 +13,20 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty
 
-from .DQN import DQN  # Assuming DQN
-from .DQL_ENV import DQLEnv # Assuming DQL_ENV
+from .DQN import DQN
+from .DQL_ENV import DQLEnv
 from sim_control.sim_reset_handler import SimulationResetHandler
 
 
 # Hyperparameters (Keep relevant ones)
 GAMMA = 0.99
-LEARNING_RATE = 5e-4
+LEARNING_RATE = 1e-4
 BATCH_SIZE = 32
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 100 # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
 EPSILON_END = 0.02
-EPSILON_DECAY = 10000 # Steps over which epsilon decays
+EPSILON_DECAY = 30000 # Steps over which epsilon decays
 TARGET_UPDATE_FREQ = 1000 # Steps between updating the target network
 
 
@@ -40,15 +40,26 @@ class DQLAgent(Node):
         self.declare_parameter('learning_mode', learning_mode)
         self.declare_parameter('model_path', model_path) # Path to load a pre-trained model (optional)
         self.declare_parameter('best_model_name', best_model_name) # Filename for the best performing model
+        # Add new epsilon parameters
+        self.declare_parameter('epsilon_start', EPSILON_START) # Starting epsilon value
+        self.declare_parameter('epsilon_end', EPSILON_END) # Final epsilon value
+        self.declare_parameter('epsilon_decay', EPSILON_DECAY) # Steps for decay
 
         self.learning_mode = self.get_parameter('learning_mode').value
         self.model_path = self.get_parameter('model_path').value
         self.best_model_name = self.get_parameter('best_model_name').value
+        # Get epsilon parameters with defaults
+        self.epsilon_start = self.get_parameter('epsilon_start').value
+        self.epsilon_end = self.get_parameter('epsilon_end').value
+        self.epsilon_decay = self.get_parameter('epsilon_decay').value
 
         self.get_logger().info(f"--- DQL Agent Configuration ---")
         self.get_logger().info(f"Learning Mode: {self.learning_mode}")
         self.get_logger().info(f"Load Model Path: '{self.model_path}'")
         self.get_logger().info(f"Best Model Filename: '{self.best_model_name}'")
+        self.get_logger().info(f"Epsilon Start: {self.epsilon_start}")
+        self.get_logger().info(f"Epsilon End: {self.epsilon_end}")
+        self.get_logger().info(f"Epsilon Decay Steps: {self.epsilon_decay}")
         self.get_logger().info(f"-------------------------------")
 
         # --- Environment Setup ---
@@ -222,7 +233,7 @@ class DQLAgent(Node):
 
 
         # --- Action Selection (Epsilon-Greedy) ---
-        epsilon = np.interp(self.steps, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
+        epsilon = np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end])
 
         if random.random() < epsilon:
             action = self.env.action_space.sample() # Explore
@@ -266,7 +277,7 @@ class DQLAgent(Node):
             self.get_logger().info(
                 f"--- Episode {self.episode_count} Finished --- \n"
                 f"Reward: {self.episode_reward:.2f} | Avg Reward (Last 100): {mean_reward_100:.2f} \n"
-                f"Steps: {self.steps} | Epsilon: {epsilon:.3f}"
+                f"Steps: {self.steps} | Epsilon: {epsilon:.3f} \n"
                 f"-------------------------------------"
             )
 
