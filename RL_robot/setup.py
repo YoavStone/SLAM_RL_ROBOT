@@ -71,6 +71,7 @@ setup(
         'console_scripts': [
             'asymmetric_velocity_controller = sim_control.asymmetric_velocity_controller:main',
             'episode_monitor = sim_control.episode_monitor:main',
+            'odom_middleman = sim_control.odom_middleman:main',
 
             'control_motors = RL_robot.command_robot:main',
 

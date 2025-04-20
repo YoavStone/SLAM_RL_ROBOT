@@ -1,40 +1,97 @@
+# Bridge configuration for Gazebo Harmonic and ROS2
+
+# Clock synchronization
 - ros_topic_name: "clock"
   gz_topic_name: "clock"
   ros_type_name: "rosgraph_msgs/msg/Clock"
   gz_type_name: "gz.msgs.Clock"
   direction: GZ_TO_ROS
 
-# gz topic published by JointState plugin
+# Joint states
 - ros_topic_name: "joint_states"
   gz_topic_name: "joint_states"
   ros_type_name: "sensor_msgs/msg/JointState"
   gz_type_name: "gz.msgs.Model"
   direction: GZ_TO_ROS
 
-# gz topic published by DiffDrive plugin
-- ros_topic_name: "odom"
-  gz_topic_name: "odom"
+# Raw odometry from diff drive (published to odom_diff)
+- ros_topic_name: "odom_diff"
+  gz_topic_name: "odom_diff"
   ros_type_name: "nav_msgs/msg/Odometry"
   gz_type_name: "gz.msgs.Odometry"
   direction: GZ_TO_ROS
 
-# gz topic published by DiffDrive plugin
-- ros_topic_name: "tf"
-  gz_topic_name: "tf"
+# Raw TF from diff drive (published to tf_diff)
+- ros_topic_name: "tf_diff"
+  gz_topic_name: "tf_diff"
   ros_type_name: "tf2_msgs/msg/TFMessage"
   gz_type_name: "gz.msgs.Pose_V"
   direction: GZ_TO_ROS
 
-# gz topic published by lidar plugin
+# Lidar scan (unchanged)
 - ros_topic_name: "/scan"
   gz_topic_name: "/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
-# gz topic subscribed to by DiffDrive plugin
+# Command velocity to robot (using cmd_vel_output)
 - ros_topic_name: "cmd_vel_output"
   gz_topic_name: "cmd_vel_output"
   ros_type_name: "geometry_msgs/msg/Twist"
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
+
+# Also listen to cmd_vel for backwards compatibility
+- ros_topic_name: "cmd_vel"
+  gz_topic_name: "cmd_vel_output"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+
+
+
+
+
+# ----------------------- normally: ----------------------- #
+#- ros_topic_name: "clock"
+#  gz_topic_name: "clock"
+#  ros_type_name: "rosgraph_msgs/msg/Clock"
+#  gz_type_name: "gz.msgs.Clock"
+#  direction: GZ_TO_ROS
+#
+## gz topic published by JointState plugin
+#- ros_topic_name: "joint_states"
+#  gz_topic_name: "joint_states"
+#  ros_type_name: "sensor_msgs/msg/JointState"
+#  gz_type_name: "gz.msgs.Model"
+#  direction: GZ_TO_ROS
+#
+## gz topic published by DiffDrive plugin
+#- ros_topic_name: "odom"
+#  gz_topic_name: "odom"
+#  ros_type_name: "nav_msgs/msg/Odometry"
+#  gz_type_name: "gz.msgs.Odometry"
+#  direction: GZ_TO_ROS
+#
+## gz topic published by DiffDrive plugin
+#- ros_topic_name: "tf"
+#  gz_topic_name: "tf"
+#  ros_type_name: "tf2_msgs/msg/TFMessage"
+#  gz_type_name: "gz.msgs.Pose_V"
+#  direction: GZ_TO_ROS
+#
+## gz topic published by lidar plugin
+#- ros_topic_name: "/scan"
+#  gz_topic_name: "/scan"
+#  ros_type_name: "sensor_msgs/msg/LaserScan"
+#  gz_type_name: "gz.msgs.LaserScan"
+#  direction: GZ_TO_ROS
+#
+## gz topic subscribed to by DiffDrive plugin
+#- ros_topic_name: "cmd_vel_output"
+#  gz_topic_name: "cmd_vel_output"
+#  ros_type_name: "geometry_msgs/msg/Twist"
+#  gz_type_name: "gz.msgs.Twist"
+#  direction: ROS_TO_GZ

@@ -117,9 +117,9 @@ def generate_launch_description():
         # Optional: Add parameters if you want to configure values from launch file
         parameters=[{
             'max_linear_accel': 1.5,
-            'max_linear_decel': 0.5,
+            'max_linear_decel': 0.4,
             'max_angular_accel': 3.0,
-            'max_angular_decel': 1.0,
+            'max_angular_decel': 0.8,
             'rate_hz': 50.0,
         }],
     )
