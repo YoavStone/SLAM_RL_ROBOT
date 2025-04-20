@@ -20,10 +20,10 @@ from sim_control.sim_reset_handler import SimulationResetHandler
 
 # Hyperparameters (Keep relevant ones)
 GAMMA = 0.99
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 5e-4
 BATCH_SIZE = 32
 BUFFER_SIZE = 50000
-MIN_REPLAY_SIZE = 100 # Minimum experiences in buffer before learning starts
+MIN_REPLAY_SIZE = 1000 # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
 EPSILON_END = 0.02
 EPSILON_DECAY = 30000 # Steps over which epsilon decays
@@ -31,7 +31,7 @@ TARGET_UPDATE_FREQ = 1000 # Steps between updating the target network
 
 
 class DQLAgent(Node):
-    def __init__(self, learning_mode=True, model_path='', best_model_name="best_dqn_gazebo_model.pth"):
+    def __init__(self, learning_mode=True, model_path='', best_model_name="best_dqn_gazebo_model"):
         super().__init__('dql_agent')
 
         self.episode_end_pub = self.create_publisher(Empty, 'episode_end', 10)
@@ -426,9 +426,13 @@ class DQLAgent(Node):
         if self.episode_reward > self.best_episode_reward:
             self.best_episode_reward = self.episode_reward
             try:
-                torch.save(self.q_network.state_dict(), self.best_model_path)
+                torch.save(self.q_network.state_dict(), self.best_model_path + str(self.episode_count) + '.pth')
                 self.get_logger().info(
-                    f"🏆 Saved NEW BEST model! Episode: {self.episode_count}, Reward: {self.best_episode_reward:.2f}. Path: {self.best_model_path}"
+                    f"🏆 Saved NEW BEST model! Episode: {self.episode_count}, Reward: {self.best_episode_reward:.2f}. Path: {self.best_model_path, self.episode_count}.pth"
+                )
+                torch.save(self.q_network.state_dict(), self.best_model_path +'.pth')
+                self.get_logger().info(
+                    f"🏆 Saved NEW BEST model! Episode: {self.episode_count}, Reward: {self.best_episode_reward:.2f}. Path: {self.best_model_path}.pth"
                 )
             except Exception as e:
                 self.get_logger().error(f"🔥 Failed to save new best model: {e}")

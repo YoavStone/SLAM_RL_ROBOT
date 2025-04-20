@@ -14,8 +14,8 @@ from .cropped_map_visualizer import MapVisualizationNode
 # Constants
 CONTINUES_PUNISHMENT = -5  # amount of punishment for every sec wasted
 HIT_WALL_PUNISHMENT = -200
-CLOSE_TO_WALL_PUNISHMENT = -0.1
-EXPLORATION_REWARD = 1.5
+CLOSE_TO_WALL_PUNISHMENT = 0.4
+EXPLORATION_REWARD = 2.5
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
 ANGULAR_SPEED = 0.3 * 2  # irl: 0.3  # rad/s
@@ -346,7 +346,7 @@ class GazeboEnv(Node):
         sigmoid_value = 1 / (1 + math.exp(-sigmoid_steepness * (danger_fraction - shift)))
 
         # Scale to punishment range - we multiply by a factor > 1 to ensure it reaches full punishment
-        punishment = -sigmoid_value * abs(HIT_WALL_PUNISHMENT) * 0.9  # slight discount
+        punishment = -sigmoid_value * abs(HIT_WALL_PUNISHMENT) * CLOSE_TO_WALL_PUNISHMENT  # slight discount
 
         # Clip to maximum punishment (the smaller punishment)
         punishment = max(punishment, HIT_WALL_PUNISHMENT)
