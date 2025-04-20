@@ -59,6 +59,22 @@ class EpisodeMonitor(Node):
             (0.0, -6.3)
         ]
 
+        # Get parameter values
+        self.spawn_location_str = self.get_parameter('spawn_location').get_parameter_value().string_value
+        self.get_logger().info(f"Received parameters: spawn_location='{self.spawn_location_str}'")
+
+        # Parse spawn location if provided
+        self.target_spawn_position = None
+        if self.spawn_location_str:
+            try:
+                # Try to parse as "x,y" format
+                x, y = self.spawn_location_str.split(',')
+                self.target_spawn_position = (float(x.strip()), float(y.strip()))
+                self.get_logger().info(f"Using provided spawn location: {self.target_spawn_position}")
+            except ValueError:
+                self.get_logger().warn(f"Could not parse spawn_location '{self.spawn_location_str}'. Using random position.")
+                self.target_spawn_position = None
+
         # Flag to prevent concurrent reset operations
         self.is_resetting = False
 
@@ -128,10 +144,21 @@ class EpisodeMonitor(Node):
         """Store the latest odometry data"""
         self.current_odom = msg
 
+    def get_target_position(self):
+        """Get the target position for teleportation"""
+        if self.target_spawn_position is not None:
+            return self.target_spawn_position
+        else:
+            # Choose a random position from predefined positions
+            return random.choice(self.positions)
+
     def teleport_robot_up(self):
         """Teleport the robot 200m up in the air"""
         self.get_logger().info("Teleporting robot 200m up in the air")
 
+        # Get target x, y coordinates
+        target_x, target_y = self.get_target_position()
+        self.get_logger().info(f"Target position for teleport: ({target_x}, {target_y})")
         try:
             # Format the command for Gazebo Harmonic
             cmd = [
@@ -139,7 +166,7 @@ class EpisodeMonitor(Node):
                 '--reqtype', 'gz.msgs.Pose',
                 '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
-                '--req', f'name: "{self.model_name}", position: {{x: 0.0, y: 0.0, z: 200.0}}, orientation: {{w: 1.0}}'
+                '--req', f'name: "{self.model_name}", position: {{x: {target_x}, y: {target_y}, z: 200.0}}, orientation: {{w: 1.0}}'
             ]
 
             self.get_logger().info(f"Executing command: {' '.join(cmd)}")
@@ -165,9 +192,12 @@ class EpisodeMonitor(Node):
             return False
 
     def teleport_to_origin(self):
-        """Teleport the robot to exactly 0,0,0 with zero orientation after odom correction"""
-        self.get_logger().info("Teleporting robot to exact origin (0,0,0) with zero orientation")
+        """Teleport the robot to exactly x,y,0 with zero orientation after odom correction"""
+        self.get_logger().info("Teleporting robot to exact origin (x,y,0) with zero orientation")
 
+        # Get target x, y coordinates
+        target_x, target_y = self.get_target_position()
+        self.get_logger().info(f"Target position for teleport: ({target_x}, {target_y})")
         try:
             # Format the command for Gazebo Harmonic
             cmd = [
@@ -176,7 +206,7 @@ class EpisodeMonitor(Node):
                 '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req',
-                f'name: "{self.model_name}", position: {{x: 0.0, y: 0.0, z: 0.0}}, orientation: {{w: 1.0, x: 0.0, y: 0.0, z: 0.0}}'
+                f'name: "{self.model_name}", position: {{x: {target_x}, y: {target_y}, z: 0.0}}, orientation: {{w: 1.0, x: 0.0, y: 0.0, z: 0.0}}'
             ]
 
             self.get_logger().info(f"Executing command: {' '.join(cmd)}")
