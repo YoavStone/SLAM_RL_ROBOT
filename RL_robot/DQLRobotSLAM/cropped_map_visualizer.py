@@ -34,7 +34,6 @@ class MapVisualizationNode(Node):
     def set_map(self, cropped_map, resolution):
         """Store the map data exactly as provided from the agent"""
         if cropped_map is None:
-            self.get_logger().warn("[MapVis] Received None map data")
             return
 
         # Store as-is without any reprocessing
@@ -43,15 +42,7 @@ class MapVisualizationNode(Node):
 
         # Print debug info
         map_size = int(len(cropped_map) ** 0.5)
-        self.get_logger().info(f"[MapVis] Received cropped map: {map_size}x{map_size}, res={resolution}")
-        self.get_logger().info(f"[MapVis] First 100 cells: {cropped_map[:100]}")
-        self.get_logger().info(f"[MapVis] Last 100 cells: {cropped_map[-100:]}")
-
-        # Count unknown cells in first row
-        if map_size > 0:
-            first_row = cropped_map[:map_size]
-            unknown_count = sum(1 for cell in first_row if cell == -1.0)
-            self.get_logger().info(f"[MapVis] First row: {unknown_count}/{map_size} cells are unknown")
+        self.get_logger().info(f"Stored cropped map: {map_size}x{map_size}, res={resolution}")
 
         # Publish immediately
         self.publish_map()
@@ -82,12 +73,6 @@ class MapVisualizationNode(Node):
             msg.info.height = size
             msg.info.resolution = self.resolution
 
-            # Log received map details
-            self.get_logger().info(
-                f"[MapVis] Processing map with dimensions: {size}x{size}, resolution: {self.resolution}")
-            self.get_logger().info(f"[MapVis] First 100 cells: {self.map_processed[:100]}")
-            self.get_logger().info(f"[MapVis] Last 100 cells: {self.map_processed[-100:]}")
-
             # Set origin
             offset = size * self.resolution / 2.0
             msg.info.origin.position.x = -offset
@@ -99,53 +84,29 @@ class MapVisualizationNode(Node):
             free_count = 0
             obstacle_count = 0
 
-            # For debugging, track the first row specifically
-            first_row_data = []
-
             data = []
-            for y in range(size):
-                row_data = []  # For debugging
-                for x in range(size):
+            for y in range(size):  # Going row by row
+                for x in range(size):  # Then column by column
                     idx = y * size + x
 
                     # Make sure we're within bounds
                     if idx < len(self.map_processed):
                         val = self.map_processed[idx]
 
-                        # Convert to occupancy grid values
                         if val == -1.0:
-                            grid_val = -1  # Unknown
-                            unknown_count += 1
+                            data.append(-1)  # Unknown
                         elif val < 0.2:
-                            grid_val = 0  # Free space
-                            free_count += 1
+                            data.append(0)  # Free space
                         else:
-                            grid_val = 100  # Obstacle
-                            obstacle_count += 1
+                            data.append(100)  # Obstacle
                     else:
-                        grid_val = -1  # Default to unknown if out of bounds
-                        unknown_count += 1
-
-                    data.append(grid_val)
-                    row_data.append(grid_val)
-
-                    # Save first row for debugging
-                    if y == 0:
-                        first_row_data.append(grid_val)
-
-                # Debug first 3 and last 3 rows
-                if y < 3 or y >= size - 3:
-                    self.get_logger().info(f"[MapVis] Row {y} sample: {row_data[:5]}{'...' if size > 5 else ''}")
+                        data.append(-1)  # Default to unknown if out of bounds
 
             msg.data = data
 
-            # Log first row statistics
-            unknown_in_first_row = first_row_data.count(-1)
-            self.get_logger().info(f"[MapVis] First row: {unknown_in_first_row}/{size} cells are unknown")
-
             # Log diagnostics
             self.get_logger().info(
-                f"[MapVis] Publishing map {size}x{size}, res={self.resolution}: "
+                f"Publishing map {size}x{size}, res={self.resolution}: "
                 f"unknown={unknown_count}, free={free_count}, obstacle={obstacle_count}"
             )
 
@@ -153,4 +114,4 @@ class MapVisualizationNode(Node):
             self.map_pub.publish(msg)
 
         except Exception as e:
-            self.get_logger().error(f"[MapVis] Error publishing map: {e}")
+            self.get_logger().error(f"Error publishing map: {e}")
