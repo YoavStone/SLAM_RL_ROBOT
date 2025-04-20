@@ -1,7 +1,6 @@
+import time
 import rclpy
 from std_msgs.msg import Empty
-import time
-
 
 class SimulationResetHandler:
     """Handles simulation reset functionality for the DQLAgent"""
@@ -38,11 +37,11 @@ class SimulationResetHandler:
         # flags for synchronization
         self.reset_requested = False
         self.reset_completed = False
+        self.reset_timeout = None
+        self.max_reset_wait = 60.0  # Maximum seconds to wait for a reset to complete
 
         # Add a timer to check reset status
         self.reset_check_timer = agent_node.create_timer(0.5, self.check_reset_status)
-
-        self.logger.info("Simulation reset handler initialized")
 
         self.logger.info("Simulation reset handler initialized")
 
@@ -51,24 +50,39 @@ class SimulationResetHandler:
         self.logger.info("Simulation reset notification received")
         self.reset_requested = True
         self.reset_completed = False
+        self.reset_timeout = time.time() + self.max_reset_wait
         self.handle_reset()
 
     def reset_complete_callback(self, msg):
         """Called when reset complete notification is received"""
         self.logger.info("Reset complete notification received")
         self.reset_completed = True
+        self.is_resetting = False
 
     def check_reset_status(self):
         """Periodically check if reset is in progress"""
         if self.reset_requested and not self.reset_completed:
-            self.logger.info("Waiting for reset to complete...")
-            # We're still waiting for the reset to complete
-            self.is_resetting = True
+            # Check for timeout
+            if self.reset_timeout and time.time() > self.reset_timeout:
+                self.logger.warn(f"Reset timed out after {self.max_reset_wait} seconds. Forcing resume.")
+                self.is_resetting = False
+                self.reset_requested = False
+                self.reset_completed = False
+                self.reset_timeout = None
+                # Force a reset to get a clean state
+                obs, _ = self.env.reset()
+                if obs is not None:
+                    self.node.current_obs = obs
+            else:
+                # Still waiting for reset
+                self.logger.info("Waiting for reset to complete...", throttle_duration_sec=5.0)
+                self.is_resetting = True
         elif self.reset_requested and self.reset_completed:
             self.logger.info("Reset completed, resuming operation")
             self.is_resetting = False
             self.reset_requested = False
             self.reset_completed = False
+            self.reset_timeout = None
 
     def handle_reset(self):
         """Handle environment reset without losing training progress"""
@@ -106,9 +120,6 @@ class SimulationResetHandler:
         except Exception as e:
             self.logger.error(f"Error handling environment reset: {e}")
             return False
-        finally:
-            # After everything is done, clear the reset flag
-            self.is_resetting = False
 
     def is_reset_in_progress(self):
         """Check if a reset is currently in progress"""

@@ -8,14 +8,18 @@ import time
 import math
 import torch
 from gymnasium import spaces
+from std_msgs.msg import Empty
+
+from sim_control.env_reset_handler import EnvironmentResetHandler
+
 
 from .cropped_map_visualizer import MapVisualizationNode
 
 # Constants
 CONTINUES_PUNISHMENT = -5  # amount of punishment for every sec wasted
 HIT_WALL_PUNISHMENT = -200
-CLOSE_TO_WALL_PUNISHMENT = -0.1
-EXPLORATION_REWARD = 1.5
+CLOSE_TO_WALL_PUNISHMENT_FACTOR = 0.5
+EXPLORATION_REWARD = 2.0
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
 ANGULAR_SPEED = 0.3 * 2  # irl: 0.3  # rad/s
@@ -260,20 +264,28 @@ class GazeboEnv(Node):
 
     def update_timer_callback(self):
         """Timer callback to update environment state at 10Hz (0.1 seconds)"""
-        if self.scan_ready and self.map_ready and (self.odom_ready or self.slam_pose_ready):
-            dt = time.time() - self.last_update_time
-            self.last_update_time = time.time()
+        # Skip updates if reset is in progress
+        if hasattr(self, 'is_resetting') and self.is_resetting:
+            self.get_logger().debug("Skipping environment update during reset", throttle_duration_sec=1.0)
+            return
 
-            # This would typically be called from the DQL agent's update loop
-            new_state, reward, is_terminated = self.update_env(
-                self.map_processed,
-                self.slam_pose if self.slam_pose is not None else self.pos,
-                self.measured_distance_to_walls,
-                dt
-            )
+        # Skip updates if we don't have all required sensor data
+        if not (self.scan_ready and self.map_ready and (self.odom_ready or self.slam_pose_ready)):
+            return
 
-            if is_terminated:
-                print("Environment terminated")
+        dt = time.time() - self.last_update_time
+        self.last_update_time = time.time()
+
+        # This would typically be called from the DQL agent's update loop
+        new_state, reward, is_terminated = self.update_env(
+            self.map_processed,
+            self.slam_pose if self.slam_pose is not None else self.pos,
+            self.measured_distance_to_walls,
+            dt
+        )
+
+        if is_terminated:
+            self.get_logger().info("Environment terminated")
 
     def action_to_cmd(self, action):
         """Convert action index to Twist command"""
@@ -346,7 +358,7 @@ class GazeboEnv(Node):
         sigmoid_value = 1 / (1 + math.exp(-sigmoid_steepness * (danger_fraction - shift)))
 
         # Scale to punishment range - we multiply by a factor > 1 to ensure it reaches full punishment
-        punishment = -sigmoid_value * abs(HIT_WALL_PUNISHMENT) * 0.9  # slight discount
+        punishment = -sigmoid_value * abs(HIT_WALL_PUNISHMENT) * CLOSE_TO_WALL_PUNISHMENT_FACTOR
 
         # Clip to maximum punishment (the smaller punishment)
         punishment = max(punishment, HIT_WALL_PUNISHMENT)
@@ -428,7 +440,12 @@ class GazeboEnv(Node):
         return new_state, reward, is_terminated
 
     def reset(self):
-        """Reset the environment - in Gazebo this would typically involve resetting the simulation"""
+        """Reset the environment with improved synchronization"""
+        self.get_logger().info("GazeboEnv: Beginning reset process")
+
+        # Set a flag that we're in the middle of resetting
+        self.is_resetting = True
+
         # Reset flags
         self.scan_ready = False
         self.odom_ready = False
@@ -439,19 +456,58 @@ class GazeboEnv(Node):
         stop_cmd = Twist()
         self.cmd_vel_pub.publish(stop_cmd)
 
-        # Wait for new data
-        timeout = 5.0  # seconds
+        # Clear the previous map for reward calculation
+        self.previous_map = None
+
+        # Wait for sensors to become ready again
+        # Note: We don't need to wait for reset_complete separately because
+        # the EnvironmentResetHandler will manage the is_resetting flag
+        timeout = 40.0  # seconds
         start_time = time.time()
 
-        while not (self.scan_ready and self.map_ready and (self.odom_ready or self.slam_pose_ready)):
+        while not self._check_sensors_ready():
+            # Spin to process callbacks
             rclpy.spin_once(self, timeout_sec=0.1)
+
+            # Check timeout
             if time.time() - start_time > timeout:
-                print("Timeout waiting for sensor data during reset")
+                self.get_logger().warn("Reset timeout - sensors not ready after waiting period!")
                 break
 
+            # Log status periodically
+            if int(time.time() - start_time) % 5 == 0:  # Every 5 seconds
+                self.get_logger().info(
+                    f"Waiting for sensors during reset: scan={self.scan_ready}, "
+                    f"map={self.map_ready}, odom={self.odom_ready}, slam={self.slam_pose_ready}",
+                    throttle_duration_sec=5.0
+                )
+
+        # Reset state variables
         self.last_update_time = time.time()
         self.episode_start_time = time.time()
-        return self.get_state(), {}  # Return state and empty info dict (gym-like interface)
+
+        # Note: We don't clear is_resetting here because the EnvironmentResetHandler
+        # will handle that when it receives the reset_complete message
+
+        self.get_logger().info("GazeboEnv: Reset sensors ready, waiting for reset_complete from monitor")
+
+        return self.get_state(), {}
+
+    def _check_sensors_ready(self):
+        """Check if all required sensors have reported data"""
+        return (self.scan_ready and
+                self.map_ready and
+                (self.odom_ready or self.slam_pose_ready))
+
+    def _reset_complete_callback(self, msg):
+        """Callback for reset_complete message"""
+        self.get_logger().info("Reset complete notification received")
+        self.reset_complete_received = True
+
+    def _reset_complete_callback(self, msg):
+        """Callback when reset_complete message is received"""
+        self.get_logger().info("Reset complete notification received")
+        self.reset_complete_received = True
 
 
 class DQLEnv:
@@ -473,6 +529,9 @@ class DQLEnv:
         self.actions = self.gazebo_env.actions
         self.rad_of_robot = self.gazebo_env.rad_of_robot
 
+        # Create an environment reset handler
+        self.reset_handler = EnvironmentResetHandler(self)
+
     def get_state_size(self):
         return self.gazebo_env.get_state_size()
 
@@ -483,6 +542,11 @@ class DQLEnv:
         return self.gazebo_env.get_state()
 
     def update_observation_space(self):
+        """Update the observation space from the gazebo environment"""
+        # If we're in reset, don't update the observation space
+        if hasattr(self, 'reset_handler') and self.reset_handler.is_reset_in_progress():
+            return False
+
         if self.gazebo_env.observation_space is not None:
             self.observation_space = self.gazebo_env.observation_space
             return True
@@ -490,6 +554,11 @@ class DQLEnv:
 
     def step(self, action):
         """Execute action and get new state, reward, etc. (gym-like interface)"""
+        # Check if we're in a reset state
+        if self.reset_handler.is_reset_in_progress() or self.observation_space is None:
+            # Return None for observation to indicate reset is in progress
+            return None, 0.0, True, False, {"reset_in_progress": True}
+
         # Execute the action
         self.gazebo_env.execute_action(action)
 
@@ -510,7 +579,32 @@ class DQLEnv:
 
     def reset(self):
         """Reset the environment (gym-like interface)"""
-        return self.gazebo_env.reset()
+        # Let the environment know we're initiating a reset
+        self.reset_handler.is_resetting = True
+
+        # Set observation space to None during reset
+        saved_obs_space = self.observation_space
+        self.observation_space = None
+
+        # Use the gazebo_env's reset method which now waits for the reset_complete message
+        self.gazebo_env.get_logger().info("DQLEnv initiating environment reset")
+        state, info = self.gazebo_env.reset()
+
+        # Verify state is valid
+        if state is None:
+            self.gazebo_env.get_logger().error("Received None state after reset. This shouldn't happen!")
+            # Try one more time with a delay
+            time.sleep(2.0)
+            state, info = self.gazebo_env.reset()
+
+        # Reset is complete
+        self.reset_handler.is_resetting = False
+
+        # Restore observation space if reset was successful
+        if state is not None and saved_obs_space is not None:
+            self.observation_space = saved_obs_space
+
+        return state, info
 
     def close(self):
         """Clean up resources"""
