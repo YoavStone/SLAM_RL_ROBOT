@@ -14,8 +14,10 @@ from .cropped_map_visualizer import MapVisualizationNode
 # Constants
 CONTINUES_PUNISHMENT = -5  # amount of punishment for every sec wasted
 HIT_WALL_PUNISHMENT = -200
-CLOSE_TO_WALL_PUNISHMENT = 0.4
-EXPLORATION_REWARD = 2.5
+CLOSE_TO_WALL_PUNISHMENT = 0.2  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
+EXPLORATION_REWARD = 5.0  # reward for every newly discovered cell
+MOVEMENT_REWARD = 1.0  # reward for moving beyond a threshold (so it wont stay in place)
+REVISIT_PENALTY = -0.1  # punishment for revisiting a cell in the map
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
 ANGULAR_SPEED = 0.3 * 2  # irl: 0.3  # rad/s
@@ -38,12 +40,16 @@ class GazeboEnv(Node):
         self.rad_of_robot = rad_of_robot * 1.3  # radius from lidar to tip with safety margin
 
         # Environment state
-        self.previous_map = None
         self.map_processed = []  # Processed map data for DQL input
         self.pos = [0.0, 0.0, 0.0]  # [orientation, x, y]
         self.slam_pose = None  # Store the latest SLAM pose
         self.measured_distance_to_walls = [10.0] * 8  # distances in eighths of circle
         self.last_update_time = time.time()
+
+        self.previous_map = None
+        self.last_position = None
+        self.map_raw = None
+        self.visit_count_map = None
 
         # Action space: stop, forward, back, right, left
         self.actions = [0, 1, 2, 3, 4]
@@ -311,6 +317,67 @@ class GazeboEnv(Node):
         """Get the number of possible actions"""
         return len(self.actions)
 
+    # def revisit_to_penalty(self):
+    #     """Calculate penalty for revisiting already explored areas"""
+    #     penalty = 0
+    #
+    #     # Initialize visit count map
+    #     if self.map_raw is not None:
+    #         self.visit_count_map = np.zeros(len(self.map_raw.data))
+    #     else:
+    #         self.visit_count_map = None
+    #
+    #     if self.visit_count_map is not None:
+    #         # Get current position in grid coordinates
+    #         if hasattr(self, 'map_raw') and hasattr(self, 'center_cell_x') and hasattr(self, 'center_cell_y'):
+    #             resolution = self.map_raw.info.resolution
+    #             origin_x = self.map_raw.info.origin.position.x
+    #             origin_y = self.map_raw.info.origin.position.y
+    #
+    #             curr_pos = self.slam_pose if self.slam_pose is not None else self.pos
+    #             grid_x = int((curr_pos[1] - origin_x) / resolution)
+    #             grid_y = int((curr_pos[2] - origin_y) / resolution)
+    #
+    #             # Update visit count for current cell
+    #             width = self.map_raw.info.width
+    #             cell_idx = grid_y * width + grid_x
+    #
+    #             if 0 <= cell_idx < len(self.visit_count_map):
+    #                 # Increment visit count
+    #                 self.visit_count_map[cell_idx] += 1
+    #
+    #                 # Apply penalty for revisits (scaled by number of visits)
+    #                 visit_count = self.visit_count_map[cell_idx]
+    #                 if visit_count > 1:  # Only penalize cells visited more than once
+    #                     revisit_penalty = REVISIT_PENALTY * (visit_count - 1)
+    #                     penalty += revisit_penalty
+    #                     print(f"Revisit penalty: {revisit_penalty:.2f} for {visit_count} visits")
+    #
+    #     return penalty
+
+    def movement_to_reward(self, dt):
+        """Calculate reward based on distance traveled since last update"""
+        reward = 0
+
+        if self.last_position is not None:
+            # Calculate distance moved
+            curr_pos = self.pos  # use odom pos since it's more accurate for shorter dis (update's more frq)
+            distance_moved = math.sqrt(
+                (curr_pos[1] - self.last_position[1]) ** 2 +
+                (curr_pos[2] - self.last_position[2]) ** 2
+            )
+
+            # Only reward significant movement (prevents micro-movements)
+            if distance_moved > 0.05:  # 5cm threshold
+                movement_reward = MOVEMENT_REWARD * distance_moved * dt
+                reward += movement_reward
+                print(f"Movement reward: {movement_reward:.2f} for {distance_moved:.2f}m")
+
+        # Store current position for next comparison
+        self.last_position = self.pos.copy()
+
+        return reward
+
     def percent_explored(self):
         if self.total_cells is None or not hasattr(self, 'map_processed') or len(self.map_processed) == 0:
             return 0.0
@@ -346,7 +413,7 @@ class GazeboEnv(Node):
         sigmoid_value = 1 / (1 + math.exp(-sigmoid_steepness * (danger_fraction - shift)))
 
         # Scale to punishment range - we multiply by a factor > 1 to ensure it reaches full punishment
-        punishment = -sigmoid_value * abs(HIT_WALL_PUNISHMENT) * CLOSE_TO_WALL_PUNISHMENT  # slight discount
+        punishment = -sigmoid_value * abs(HIT_WALL_PUNISHMENT) * CLOSE_TO_WALL_PUNISHMENT * dt # slight discount
 
         # Clip to maximum punishment (the smaller punishment)
         punishment = max(punishment, HIT_WALL_PUNISHMENT)
@@ -397,17 +464,21 @@ class GazeboEnv(Node):
         pun, is_terminated = self.dis_to_wall_to_punishment(time_from_last_env_update, new_dis)
         reward += pun
 
+        # reward for exploring new areas
+        exploration_reward = self.change_in_map_to_reward(new_map)
+        reward += exploration_reward
+
+        # reward for moving to not stay in place
+        movement_reward = self.movement_to_reward(time_from_last_env_update)
+        reward += movement_reward
+
         if is_terminated:  # Robot is too close to a wall
             # Stop the robot when it hits a wall
             stop_cmd = Twist()
             self.cmd_vel_pub.publish(stop_cmd)
-            if reward != CONTINUES_PUNISHMENT * 0.1:  # log if reward is not static
+            if reward != CONTINUES_PUNISHMENT * time_from_last_env_update:  # log if reward is not static
                 print("reward_t: ", reward, "is_terminated: ", is_terminated)
             return reward, is_terminated
-
-        # reward for exploring new areas
-        exploration_reward = self.change_in_map_to_reward(new_map)
-        reward += exploration_reward
 
         is_terminated = self.check_time_and_map_completion()
 

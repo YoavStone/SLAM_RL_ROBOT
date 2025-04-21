@@ -9,11 +9,11 @@ class DQN(nn.Module):
         in_features = int(np.prod(env.observation_space.shape))
 
         self.net = nn.Sequential(
-            nn.Linear(in_features, 128),  # input=>128=>64=>output
+            nn.Linear(in_features, 256),  # input=>128=>64=>output
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(64, env.action_space.n)
+            nn.Linear(128, env.action_space.n)
         )
 
     def forward(self, x):
