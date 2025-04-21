@@ -31,7 +31,7 @@ class GazeboEnv(Node):
         super().__init__('gazebo_env_node')
         # Initialize the reward visualizer
         print("Creating reward visualizer node...")
-        self.reward_vis = RewardVisualizer(print_interval=50)
+        self.reward_vis = RewardVisualizer(print_interval=100)  # print_interval=50 for light and slightly detailed loggs
         print("Reward visualizer node created")
         # Store recent reward components for visualization
         self.last_cont_punishment = 0
