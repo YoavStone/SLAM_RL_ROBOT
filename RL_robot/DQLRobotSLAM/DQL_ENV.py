@@ -370,7 +370,7 @@ class GazeboEnv(Node):
         """Calculate reward based on distance traveled since last update"""
         reward = 0
 
-        if self.last_position is not None:  # Check if last_position is None
+        if self.last_position is not None:
             # Calculate distance moved
             curr_pos = self.pos  # use odom pos since it's more accurate for shorter dis (update's more frq)
             distance_moved = math.sqrt(
