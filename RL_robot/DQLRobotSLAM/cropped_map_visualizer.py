@@ -42,7 +42,7 @@ class MapVisualizationNode(Node):
 
         # Print debug info
         map_size = int(len(cropped_map) ** 0.5)
-        self.get_logger().info(f"Stored cropped map: {map_size}x{map_size}, res={resolution}")
+        # self.get_logger().info(f"Stored cropped map: {map_size}x{map_size}, res={resolution}")
 
         # Publish immediately
         self.publish_map()
@@ -105,10 +105,10 @@ class MapVisualizationNode(Node):
             msg.data = data
 
             # Log diagnostics
-            self.get_logger().info(
-                f"Publishing map {size}x{size}, res={self.resolution}: "
-                f"unknown={unknown_count}, free={free_count}, obstacle={obstacle_count}"
-            )
+            # self.get_logger().info(
+            #     f"Publishing map {size}x{size}, res={self.resolution}: "
+            #     f"unknown={unknown_count}, free={free_count}, obstacle={obstacle_count}"
+            # )
 
             # Publish
             self.map_pub.publish(msg)

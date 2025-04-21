@@ -163,7 +163,7 @@ class DQLAgent(Node):
         init_steps = 0
         while len(self.replay_buffer) < MIN_REPLAY_SIZE:
             action = self.env.action_space.sample()
-            new_obs, reward, terminated, truncated, _ = self.env.step(action)
+            new_obs, reward, terminated, truncated, _ = self.env.step(action)  # force wait of 0.1 sec for env to update
             is_done = terminated or truncated
 
             if new_obs is None:
@@ -192,8 +192,8 @@ class DQLAgent(Node):
             else:
                 self.current_obs = new_obs
 
-            if init_steps % 100 == 0:
-                self.get_logger().info(f"Replay buffer filling: {len(self.replay_buffer)}/{MIN_REPLAY_SIZE}")
+            if init_steps % 20 == 0:
+                self.get_logger().info(f"Replay buffer filling: {len(self.replay_buffer)}/{MIN_REPLAY_SIZE} ")
 
         self.get_logger().info("✅ Replay buffer initialized.")
         self.training_initialized = True
@@ -241,7 +241,7 @@ class DQLAgent(Node):
             action = self.q_network.act(self.current_obs) # Exploit
 
         # --- Environment Step ---
-        new_obs, reward, terminated, truncated, _ = self.env.step(action)
+        new_obs, reward, terminated, truncated, _ = self.env.step(action)  # force wait of 0.1 sec for env to update
         is_done = terminated or truncated
 
         if new_obs is None:
@@ -303,7 +303,7 @@ class DQLAgent(Node):
         # --- Update Target Network ---
         if self.steps % TARGET_UPDATE_FREQ == 0 and self.steps > 0:
             self.target_net.load_state_dict(self.q_network.state_dict())
-            self.get_logger().info(f"🔄 Updated target network at step {self.steps}")
+            self.get_logger().info(f"🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄 Updated target network at step {self.steps} 🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄")
 
         self.steps += 1
 
@@ -329,7 +329,7 @@ class DQLAgent(Node):
         action = self.q_network.act(self.current_obs)
 
         # Execute action
-        new_obs, reward, terminated, truncated, _ = self.env.step(action)
+        new_obs, reward, terminated, truncated, _ = self.env.step(action)  # force wait of 0.1 sec for env to update
         is_done = terminated or truncated
 
         if new_obs is None:
@@ -418,9 +418,9 @@ class DQLAgent(Node):
             episode_model_name = f"episode_{self.episode_count}_reward_{self.episode_reward:.2f}_dqn_model.pth"
             episode_model_path = os.path.join(self.episode_model_dir, episode_model_name)
             torch.save(self.q_network.state_dict(), episode_model_path)
-            # self.get_logger().info(f"💾 Saved episode model to {episode_model_path}")  # Optional logging
+            self.get_logger().info(f"💾 Saved episode model to {episode_model_path}")  # Optional logging
         except Exception as e:
-            self.get_logger().error(f"🔥 Failed to save episode model {episode_model_name}: {e}")
+            self.get_logger().error(f"🔥 Failed to save episode model: {e}")
 
         # Save Best Model if Current Episode is Better
         if self.episode_reward > self.best_episode_reward:

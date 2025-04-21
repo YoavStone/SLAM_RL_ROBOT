@@ -10,13 +10,14 @@ import torch
 from gymnasium import spaces
 
 from .cropped_map_visualizer import MapVisualizationNode
+from .reward_visualizer import RewardVisualizer
 
 # Constants
-CONTINUES_PUNISHMENT = -5.0  # amount of punishment for every sec wasted
-HIT_WALL_PUNISHMENT = -200.0
-CLOSE_TO_WALL_PUNISHMENT = 0.2  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
-EXPLORATION_REWARD = 5.0  # reward for every newly discovered cell
-MOVEMENT_REWARD = 5.0  # reward for moving beyond a threshold (so it wont stay in place)
+CONTINUES_PUNISHMENT = -0.75  # amount of punishment for every sec
+HIT_WALL_PUNISHMENT = -500.0
+CLOSE_TO_WALL_PUNISHMENT = 0.3  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
+EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
+MOVEMENT_REWARD = 1.0  # reward for moving beyond a threshold (so it wont stay in place)
 REVISIT_PENALTY = -0.1  # punishment for revisiting a cell in the map
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
@@ -28,6 +29,16 @@ class GazeboEnv(Node):
 
     def __init__(self, rad_of_robot=0.34):
         super().__init__('gazebo_env_node')
+        # Initialize the reward visualizer
+        print("Creating reward visualizer node...")
+        self.reward_vis = RewardVisualizer(print_interval=50)
+        print("Reward visualizer node created")
+        # Store recent reward components for visualization
+        self.last_cont_punishment = 0
+        self.last_wall_punishment = 0
+        self.last_exploration_reward = 0
+        self.last_movement_reward = 0
+        self.last_total_reward = 0
 
         # cropped map visualizer
         print("Creating visualization node...")
@@ -35,9 +46,6 @@ class GazeboEnv(Node):
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
-
-        self.re_sums = [0, 0, 0, 0]
-        self.re_count = 0
 
         # Robot properties
         self.rad_of_robot = rad_of_robot * 1.3  # radius from lidar to tip with safety margin
@@ -81,7 +89,7 @@ class GazeboEnv(Node):
         self.slam_pose_ready = False
 
         # Timer for environment update (0.1 second interval)
-        self.timer = self.create_timer(0.1, self.update_timer_callback)
+        # self.timer = self.create_timer(0.1, self.update_timer_callback)
 
         print('Gazebo Environment Node initialized')
 
@@ -198,8 +206,8 @@ class GazeboEnv(Node):
         max_y = min_y + crop_size_cells
 
         # Debug output
-        print(f"Cropping map: [{min_x}:{max_x}, {min_y}:{max_y}] from original {width}x{height}")
-        print(f"Crop dimensions: {max_x - min_x}x{max_y - min_y}")
+        # print(f"Cropping map: [{min_x}:{max_x}, {min_y}:{max_y}] from original {width}x{height}")
+        # print(f"Crop dimensions: {max_x - min_x}x{max_y - min_y}")
 
         # Create empty cropped map with the correct size
         cropped_map = []
@@ -218,11 +226,11 @@ class GazeboEnv(Node):
                     else:
                         # This should not happen if our bounds checking is correct
                         cell_value = -1.0
-                        print(f"Warning: Index {idx} out of bounds for msg.data (len={len(msg.data)})")
+                        print(f"Warning: Index {idx} out of bounds for msg.data (len={len(msg.data)}) !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! shouldnt happen prob bug in crop map, has never happened before")
                 else:
                     # Out of bounds of the original map
                     cell_value = -1.0
-                    print(f"Warning: Coordinates ({x},{y}) out of bounds for original map {width}x{height}")
+                    # print(f"Warning: Coordinates ({x},{y}) out of bounds for original map {width}x{height}")
 
                 cropped_map.append(cell_value)
                 row_data.append(cell_value)
@@ -235,7 +243,7 @@ class GazeboEnv(Node):
         expected_size = crop_size_cells * crop_size_cells
         actual_size = len(cropped_map)
         if actual_size != expected_size:
-            print(f"WARNING: Unexpected cropped map size. Expected {expected_size}, got {actual_size}")
+            # print(f"WARNING: Unexpected cropped map size. Expected {expected_size}, got {actual_size}")
             # Ensure correct size by padding/truncating if needed
             if actual_size < expected_size:
                 cropped_map.extend([-1.0] * (expected_size - actual_size))
@@ -257,7 +265,7 @@ class GazeboEnv(Node):
         # print(f"First 100 cells: {cropped_map[:100]}")
         # print(f"Last 100 cells: {cropped_map[-100:]}")
 
-        print("updated map")
+        # print("updated map")
         if self.observation_space is None:
             obs_size = len(self.get_state())
             self.observation_space = spaces.Box(
@@ -265,7 +273,7 @@ class GazeboEnv(Node):
                 high=np.array([4, 100, 100] + [10] * 8 + [1] * len(self.map_processed)),
                 dtype=np.float32
             )
-            print(f"Observation space initialized with size {obs_size}")
+            # print(f"Observation space initialized with size {obs_size}")
 
     def update_timer_callback(self):
         """Timer callback to update environment state at 10Hz (0.1 seconds)"""
@@ -374,7 +382,8 @@ class GazeboEnv(Node):
             if distance_moved > 0.02:  # 2cm threshold (if going full speed meaning no deceleration meaning goes in a dir without stoping)
                 movement_reward = MOVEMENT_REWARD * (distance_moved*100) * dt
                 reward += movement_reward
-                print(f"Movement reward: {movement_reward:.2f} for {distance_moved:.2f}m")
+                # Store for visualization
+                self.last_movement_reward = movement_reward
 
         # Store current position for next comparison
         self.last_position = self.pos.copy()
@@ -398,10 +407,12 @@ class GazeboEnv(Node):
 
         # Check for immediate collision
         if closest < self.rad_of_robot:
+            self.last_wall_punishment = HIT_WALL_PUNISHMENT
             return HIT_WALL_PUNISHMENT, True
 
         # If outside danger zone, no punishment
         if closest >= danger_zone_start:
+            self.last_wall_punishment = 0
             return 0, False
 
         # In danger zone - normalize to 0-1 range
@@ -418,6 +429,9 @@ class GazeboEnv(Node):
         # Clip to maximum punishment
         punishment = max(punishment, HIT_WALL_PUNISHMENT)
 
+        # Store for visualization
+        self.last_wall_punishment = punishment
+
         return punishment, is_terminated
 
     def change_in_map_to_reward(self, new_map):
@@ -425,6 +439,7 @@ class GazeboEnv(Node):
         # Skip if we don't have a previous map to compare
         if not hasattr(self, 'previous_map') or self.previous_map is None:
             self.previous_map = new_map.copy()
+            self.last_exploration_reward = 0
             return 0
 
         # Count newly discovered cells (changed from -1 to any other value)
@@ -438,14 +453,16 @@ class GazeboEnv(Node):
         # Store current map for next comparison
         self.previous_map = new_map.copy()
 
+        # Store for visualization
+        self.last_exploration_reward = reward
+
         return reward
 
     def check_time_and_map_completion(self):
         # Check map exploration condition
         explored_percent = self.percent_explored()
         if explored_percent >= self.explored_threshold:
-            print(
-                f"Terminating: {explored_percent * 100:.2f}% of map explored (target: {self.explored_threshold * 100}%)")
+            print(f"Terminating: {explored_percent * 100:.2f}% of map explored (target: {self.explored_threshold * 100}%)")
             return True
 
         # Check time-based termination
@@ -458,44 +475,45 @@ class GazeboEnv(Node):
 
     def calc_reward(self, time_from_last_env_update, new_dis, new_map):
         """Calculate reward based on time spent, proximity to walls, and exploration"""
+        # Time-based continuous punishment
         cont = CONTINUES_PUNISHMENT * time_from_last_env_update
+        self.last_cont_punishment = cont
         reward = cont
 
-        # punishment for being close to walls
+        # Punishment for being close to walls
         pun, is_terminated = self.dis_to_wall_to_punishment(time_from_last_env_update, new_dis)
         reward += pun
 
-        # reward for exploring new areas
+        # Reward for exploring new areas
         exploration_reward = self.change_in_map_to_reward(new_map)
         reward += exploration_reward
 
-        # reward for moving to not stay in place
+        # Reward for moving to not stay in place
         movement_reward = self.movement_to_reward(time_from_last_env_update)
         reward += movement_reward
 
-        # check if finished by episode timeout or by map complition
+        # Check if finished by episode timeout or by map completion
         trunc = self.check_time_and_map_completion()
 
-        # for logs to know how much does each reward or pun effect
-        self.re_sums[0] += cont
-        self.re_sums[1] += pun
-        self.re_sums[2] += exploration_reward
-        self.re_sums[3] += movement_reward
+        # Store total reward for visualization
+        self.last_total_reward = reward
 
-        self.re_count += 1
-        if self.re_count%10 == 0:
-            print("REWARDS:----------------------------------------------------------------------")
-            print(self.re_sums)
-            print("REWARDS:----------------------------------------------------------------------")
+        # Update reward visualizer with new data
+        self.reward_vis.add_reward_data(
+            self.last_cont_punishment,
+            self.last_wall_punishment,
+            self.last_exploration_reward,
+            self.last_movement_reward,
+            self.last_total_reward
+        )
 
-        if reward != CONTINUES_PUNISHMENT * time_from_last_env_update:  # log if reward is not static
-            print("reward_t: ", reward, ", is_terminated: ", is_terminated)
-
-        if is_terminated or trunc:  # Robot is too close to a wall
-            # Stop the robot when it hits a wall
+        if is_terminated or trunc:
+            # Stop the robot when it hits a wall or episode ends
             print("is_terminated: ", is_terminated, ", is_truncated: ", trunc)
             stop_cmd = Twist()
             self.cmd_vel_pub.publish(stop_cmd)
+            self.last_position = 0
+
             return reward, True
 
         return reward, is_terminated
@@ -522,6 +540,12 @@ class GazeboEnv(Node):
         # Send stop command
         stop_cmd = Twist()
         self.cmd_vel_pub.publish(stop_cmd)
+
+        # IMPORTANT: Explicitly reset the previous map to ensure exploration rewards start fresh
+        self.previous_map = None
+
+        # Reset reward visualization
+        self.reward_vis.reset_data()
 
         # Wait for new data
         timeout = 5.0  # seconds
@@ -582,15 +606,17 @@ class DQLEnv:
         while time.time() - start_time < 0.1:  # Wait for 0.1 seconds
             rclpy.spin_once(self.gazebo_env, timeout_sec=0.01)
 
-        # Get the new state and reward
+        # Get the new state
         new_state = self.gazebo_env.get_state()
+
+        # SINGLE reward calculation per step
         reward, terminated = self.gazebo_env.calc_reward(
             0.1,
             self.gazebo_env.measured_distance_to_walls,
             self.gazebo_env.map_processed
         )
 
-        return new_state, reward, terminated, False, {}  # state, reward, terminated, truncated, info
+        return new_state, reward, terminated, False, {}
 
     def reset(self):
         """Reset the environment (gym-like interface)"""
