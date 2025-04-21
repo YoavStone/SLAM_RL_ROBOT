@@ -12,11 +12,11 @@ from gymnasium import spaces
 from .cropped_map_visualizer import MapVisualizationNode
 
 # Constants
-CONTINUES_PUNISHMENT = -5  # amount of punishment for every sec wasted
-HIT_WALL_PUNISHMENT = -200
+CONTINUES_PUNISHMENT = -5.0  # amount of punishment for every sec wasted
+HIT_WALL_PUNISHMENT = -200.0
 CLOSE_TO_WALL_PUNISHMENT = 0.2  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
 EXPLORATION_REWARD = 5.0  # reward for every newly discovered cell
-MOVEMENT_REWARD = 1.0  # reward for moving beyond a threshold (so it wont stay in place)
+MOVEMENT_REWARD = 5.0  # reward for moving beyond a threshold (so it wont stay in place)
 REVISIT_PENALTY = -0.1  # punishment for revisiting a cell in the map
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
@@ -35,6 +35,9 @@ class GazeboEnv(Node):
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
+
+        self.re_sums = [0, 0, 0, 0]
+        self.re_count = 0
 
         # Robot properties
         self.rad_of_robot = rad_of_robot * 1.3  # radius from lidar to tip with safety margin
@@ -368,8 +371,8 @@ class GazeboEnv(Node):
             )
 
             # Only reward significant movement (prevents micro-movements)
-            if distance_moved > 0.05:  # 5cm threshold
-                movement_reward = MOVEMENT_REWARD * distance_moved * dt
+            if distance_moved > 0.02:  # 2cm threshold (if going full speed meaning no deceleration meaning goes in a dir without stoping)
+                movement_reward = MOVEMENT_REWARD * (distance_moved*100) * dt
                 reward += movement_reward
                 print(f"Movement reward: {movement_reward:.2f} for {distance_moved:.2f}m")
 
@@ -390,7 +393,7 @@ class GazeboEnv(Node):
         is_terminated = False
 
         # Define the danger zone
-        danger_zone_start = self.rad_of_robot * 2.0  # Start increasing punishment from 2x radius
+        danger_zone_start = self.rad_of_robot * 1.5  # Start punishment from 1.5x radius
         danger_zone_end = self.rad_of_robot  # Max punishment at actual collision
 
         # Check for immediate collision
@@ -402,20 +405,17 @@ class GazeboEnv(Node):
             return 0, False
 
         # In danger zone - normalize to 0-1 range
+        # How deep into the danger zone are we (0 = just entered, 1 = at collision boundary)
         danger_fraction = (danger_zone_start - closest) / (danger_zone_start - danger_zone_end)
 
-        # Modified sigmoid that reaches full punishment at the end
-        # We want the steep middle part to reach -200
-        sigmoid_steepness = 12  # Higher value = steeper transition
-        shift = 0.7  # Shift the sigmoid curve to make it steeper at the end
+        # When danger_fraction is small (far from wall): punishment is very small
+        # When danger_fraction is near 1 (close to wall): punishment increases rapidly
+        punishment_factor = danger_fraction ** 3
 
-        # This modified sigmoid will approach -200 more quickly as danger_fraction increases
-        sigmoid_value = 1 / (1 + math.exp(-sigmoid_steepness * (danger_fraction - shift)))
+        # Scale to punishment range
+        punishment = -punishment_factor * abs(HIT_WALL_PUNISHMENT) * CLOSE_TO_WALL_PUNISHMENT * dt
 
-        # Scale to punishment range - we multiply by a factor > 1 to ensure it reaches full punishment
-        punishment = -sigmoid_value * abs(HIT_WALL_PUNISHMENT) * CLOSE_TO_WALL_PUNISHMENT * dt # slight discount
-
-        # Clip to maximum punishment (the smaller punishment)
+        # Clip to maximum punishment
         punishment = max(punishment, HIT_WALL_PUNISHMENT)
 
         return punishment, is_terminated
@@ -458,7 +458,8 @@ class GazeboEnv(Node):
 
     def calc_reward(self, time_from_last_env_update, new_dis, new_map):
         """Calculate reward based on time spent, proximity to walls, and exploration"""
-        reward = CONTINUES_PUNISHMENT * time_from_last_env_update
+        cont = CONTINUES_PUNISHMENT * time_from_last_env_update
+        reward = cont
 
         # punishment for being close to walls
         pun, is_terminated = self.dis_to_wall_to_punishment(time_from_last_env_update, new_dis)
@@ -472,18 +473,30 @@ class GazeboEnv(Node):
         movement_reward = self.movement_to_reward(time_from_last_env_update)
         reward += movement_reward
 
-        if is_terminated:  # Robot is too close to a wall
-            # Stop the robot when it hits a wall
-            stop_cmd = Twist()
-            self.cmd_vel_pub.publish(stop_cmd)
-            if reward != CONTINUES_PUNISHMENT * time_from_last_env_update:  # log if reward is not static
-                print("reward_t: ", reward, "is_terminated: ", is_terminated)
-            return reward, is_terminated
+        # check if finished by episode timeout or by map complition
+        trunc = self.check_time_and_map_completion()
 
-        is_terminated = self.check_time_and_map_completion()
+        # for logs to know how much does each reward or pun effect
+        self.re_sums[0] += cont
+        self.re_sums[1] += pun
+        self.re_sums[2] += exploration_reward
+        self.re_sums[3] += movement_reward
+
+        self.re_count += 1
+        if self.re_count%10 == 0:
+            print("REWARDS:----------------------------------------------------------------------")
+            print(self.re_sums)
+            print("REWARDS:----------------------------------------------------------------------")
 
         if reward != CONTINUES_PUNISHMENT * time_from_last_env_update:  # log if reward is not static
-            print("reward_t: ", reward, "is_terminated: ", is_terminated)
+            print("reward_t: ", reward, ", is_terminated: ", is_terminated)
+
+        if is_terminated or trunc:  # Robot is too close to a wall
+            # Stop the robot when it hits a wall
+            print("is_terminated: ", is_terminated, ", is_truncated: ", trunc)
+            stop_cmd = Twist()
+            self.cmd_vel_pub.publish(stop_cmd)
+            return reward, True
 
         return reward, is_terminated
 
