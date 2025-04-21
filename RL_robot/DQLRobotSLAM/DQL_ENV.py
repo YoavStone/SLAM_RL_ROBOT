@@ -370,7 +370,7 @@ class GazeboEnv(Node):
         """Calculate reward based on distance traveled since last update"""
         reward = 0
 
-        if self.last_position is not None:
+        if self.last_position is not None:  # Check if last_position is None
             # Calculate distance moved
             curr_pos = self.pos  # use odom pos since it's more accurate for shorter dis (update's more frq)
             distance_moved = math.sqrt(
@@ -379,8 +379,8 @@ class GazeboEnv(Node):
             )
 
             # Only reward significant movement (prevents micro-movements)
-            if distance_moved > 0.02:  # 2cm threshold (if going full speed meaning no deceleration meaning goes in a dir without stoping)
-                movement_reward = MOVEMENT_REWARD * (distance_moved*100) * dt
+            if distance_moved > 0.25 * dt:  # threshold
+                movement_reward = MOVEMENT_REWARD * (distance_moved * 100) * dt
                 reward += movement_reward
                 # Store for visualization
                 self.last_movement_reward = movement_reward
@@ -512,7 +512,7 @@ class GazeboEnv(Node):
             print("is_terminated: ", is_terminated, ", is_truncated: ", trunc)
             stop_cmd = Twist()
             self.cmd_vel_pub.publish(stop_cmd)
-            self.last_position = 0
+            self.last_position = None
 
             return reward, True
 
