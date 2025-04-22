@@ -15,7 +15,8 @@ from .reward_visualizer import RewardVisualizer
 # Constants
 CONTINUES_PUNISHMENT = -0.75  # amount of punishment for every sec
 HIT_WALL_PUNISHMENT = -500.0
-CLOSE_TO_WALL_PUNISHMENT = 0.3  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
+CLOSE_TO_WALL_PUNISHMENT = 0.35  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
+WALL_POWER = 3.5
 EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
 MOVEMENT_REWARD = 1.0  # reward for moving beyond a threshold (so it wont stay in place)
 REVISIT_PENALTY = -0.1  # punishment for revisiting a cell in the map
@@ -54,13 +55,15 @@ class GazeboEnv(Node):
         self.map_processed = []  # Processed map data for DQL input
         self.pos = [0.0, 0.0, 0.0]  # [orientation, x, y]
         self.slam_pose = None  # Store the latest SLAM pose
-        self.measured_distance_to_walls = [10.0] * 8  # distances in eighths of circle
+        self.measured_distance_to_walls = [10.0] * 16  # distances in sixteenths of circle
         self.last_update_time = time.time()
 
         self.previous_map = None
         self.last_position = None
         self.map_raw = None
         self.visit_count_map = None
+        self.center_cell_x = None
+        self.center_cell_y = None
 
         # Action space: stop, forward, back, right, left
         self.actions = [0, 1, 2, 3, 4]
@@ -95,7 +98,7 @@ class GazeboEnv(Node):
 
     def publish_cropped_map(self):
         """Trigger map visualization publication if map data is available"""
-        if hasattr(self, 'map_processed') and self.map_processed:
+        if self.map_processed:
             # If we have valid map data, call the visualization node to publish it
             self.vis_node.publish_map()
 
@@ -119,12 +122,12 @@ class GazeboEnv(Node):
 
     def scan_callback(self, msg):
         """Process laser scan data"""
-        # Divide the scan into 8 sectors and get min distance for each sector
+        # Divide the scan into 16 sectors and get min distance for each sector
         ranges = np.array(msg.ranges)
         valid_ranges = np.where(np.isfinite(ranges), ranges, msg.range_max)
 
-        # Split the scan into 8 equal sectors
-        num_sectors = 8
+        # Split the scan into 16 equal sectors
+        num_sectors = 16
         sector_size = len(valid_ranges) // num_sectors
 
         self.measured_distance_to_walls = []
@@ -171,7 +174,7 @@ class GazeboEnv(Node):
             crop_size_cells += 1
 
         # Store the center position (robot starting position) if not already stored
-        if not hasattr(self, 'center_cell_x') or not hasattr(self, 'center_cell_y'):
+        if self.center_cell_x is None or self.center_cell_y is None:
             # Use SLAM pose if available for better initial position
             if self.slam_pose is not None:
                 # Convert SLAM position to grid cell coordinates
@@ -194,7 +197,6 @@ class GazeboEnv(Node):
         min_x = max(0, self.center_cell_x - half_size)
         min_y = max(0, self.center_cell_y - half_size)
 
-        # CRITICAL FIX: Ensure we don't go out of bounds but maintain fixed crop size
         # Instead of truncating at the edge, we shift the window to fully fit within bounds
         if min_x + crop_size_cells > width:
             min_x = max(0, width - crop_size_cells)
@@ -259,18 +261,12 @@ class GazeboEnv(Node):
         if self.total_cells is None:
             self.total_cells = len(cropped_map)
 
-        # Log info about the cropped map
-        # print(f"Fixed cropped map: {crop_size_cells}x{crop_size_cells} cells " +
-        #       f"centered near ({self.center_cell_x}, {self.center_cell_y}) from original {width}x{height}")
-        # print(f"First 100 cells: {cropped_map[:100]}")
-        # print(f"Last 100 cells: {cropped_map[-100:]}")
-
         # print("updated map")
         if self.observation_space is None:
             obs_size = len(self.get_state())
             self.observation_space = spaces.Box(
-                low=np.array([-4, -100, -100] + [0] * 8 + [-1] * len(self.map_processed)),
-                high=np.array([4, 100, 100] + [10] * 8 + [1] * len(self.map_processed)),
+                low=np.array([-4, -100, -100] + [0] * 16 + [-1] * len(self.map_processed)),
+                high=np.array([4, 100, 100] + [10] * 16 + [1] * len(self.map_processed)),
                 dtype=np.float32
             )
             # print(f"Observation space initialized with size {obs_size}")
@@ -291,6 +287,63 @@ class GazeboEnv(Node):
 
             if is_terminated:
                 print("Environment terminated")
+
+    def pos_to_map_pos(self, position):
+        """
+        Convert world position coordinates to grid cell coordinates
+        Args:
+            position: [yaw, x, y] in world coordinates
+        Returns:
+            [yaw, grid_x, grid_y] with grid coordinates relative to the map
+        """
+        yaw, x, y = position
+
+        # Normalize yaw to be positive [0, 2π)
+        while yaw < 0:
+            yaw += 2 * math.pi
+        yaw = yaw % (2 * math.pi)
+
+        # Check if map info is available
+        if self.map_raw is None:
+            print(
+                "________________________ NO MAP RAW USING NORMAL POS IF HAPPENS HORRIBLE BUG BUT ONCE IS PROBABLY FINE ________________________")
+            return [yaw, x, y]  # Return position with normalized yaw if no map info
+
+        # Get map metadata
+        resolution = self.map_raw.info.resolution
+        origin_x = self.map_raw.info.origin.position.x
+        origin_y = self.map_raw.info.origin.position.y
+
+        # Convert to grid cell coordinates relative to the map origin
+        grid_x = int((x - origin_x) / resolution)
+        grid_y = int((y - origin_y) / resolution)
+
+        # Only use cropped map info if map_processed is already initialized
+        if self.map_processed and self.center_cell_x is not None and self.center_cell_y is not None:
+            # Calculate crop boundaries
+            crop_size_cells = int(np.sqrt(len(self.map_processed)))
+            half_size = crop_size_cells // 2
+            min_x = max(0, self.center_cell_x - half_size)
+            min_y = max(0, self.center_cell_y - half_size)
+
+            # Adjust for map boundaries (same logic as in map_callback)
+            width = self.map_raw.info.width
+            height = self.map_raw.info.height
+            if min_x + crop_size_cells > width:
+                min_x = max(0, width - crop_size_cells)
+            if min_y + crop_size_cells > height:
+                min_y = max(0, height - crop_size_cells)
+
+            # Adjust to coordinates within the cropped map
+            grid_x = grid_x - min_x
+            grid_y = grid_y - min_y
+
+            # Ensure coordinates are within bounds of the cropped map
+            grid_x = max(0, min(crop_size_cells - 1, grid_x))
+            grid_y = max(0, min(crop_size_cells - 1, grid_y))
+
+        # Return with grid position and normalized yaw
+        return [yaw, float(grid_x), float(grid_y)]
 
     def action_to_cmd(self, action):
         """Convert action index to Twist command"""
@@ -315,10 +368,15 @@ class GazeboEnv(Node):
         self.cmd_vel_pub.publish(cmd)
 
     def get_state(self):
-        """Get the current state representation"""
+        """Get the current state representation with position converted to grid cell coordinates"""
         # Use SLAM pose if available, otherwise fall back to odometry
         position = self.slam_pose if self.slam_pose is not None else self.pos
-        return position + self.measured_distance_to_walls + self.map_processed
+
+        # Convert position to map grid coordinates
+        grid_position = self.pos_to_map_pos(position)
+
+        # Return state with grid position
+        return grid_position + self.measured_distance_to_walls + self.map_processed
 
     def get_state_size(self):
         """Get the size of the state vector"""
@@ -421,7 +479,7 @@ class GazeboEnv(Node):
 
         # When danger_fraction is small (far from wall): punishment is very small
         # When danger_fraction is near 1 (close to wall): punishment increases rapidly
-        punishment_factor = danger_fraction ** 3
+        punishment_factor = danger_fraction ** WALL_POWER
 
         # Scale to punishment range
         punishment = -punishment_factor * abs(HIT_WALL_PUNISHMENT) * CLOSE_TO_WALL_PUNISHMENT * dt

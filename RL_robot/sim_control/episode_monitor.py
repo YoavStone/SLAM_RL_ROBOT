@@ -311,8 +311,7 @@ class EpisodeMonitor(Node):
                 if abs(cmd.angular.z) > 0.5:
                     cmd.angular.z = 0.5 if cmd.angular.z > 0 else -0.5
 
-                self.get_logger().info(f"Turning to face target. Position: ({current_x:.2f}, {current_y:.2f}), " +
-                                       f"Angle diff: {angle_diff:.2f}, Current yaw: {current_yaw:.2f}")
+                # self.get_logger().info(f"Turning to face target. Position: ({current_x:.2f}, {current_y:.2f}), " + f"Angle diff: {angle_diff:.2f}, Current yaw: {current_yaw:.2f}")
             else:
                 # Now that we're facing the target, move forward
                 linear_speed = 0.5 * distance  # Lower speed for more precision
@@ -325,8 +324,7 @@ class EpisodeMonitor(Node):
                 if abs(cmd.angular.z) > 0.5:
                     cmd.angular.z = 0.5 if cmd.angular.z > 0 else -0.5
 
-            self.get_logger().info(f"Position: ({current_x:.2f}, {current_y:.2f}), Distance: {distance:.2f}, " +
-                                   f"Angle: {angle_to_origin:.2f}, Current yaw: {current_yaw:.2f}, Diff: {angle_diff:.2f}")
+            # self.get_logger().info(f"Position: ({current_x:.2f}, {current_y:.2f}), Distance: {distance:.2f}, " + f"Angle: {angle_to_origin:.2f}, Current yaw: {current_yaw:.2f}, Diff: {angle_diff:.2f}")
 
         elif self.correction_phase == 'yaw':
             # Yaw correction phase - rotate to yaw=0
@@ -355,7 +353,7 @@ class EpisodeMonitor(Node):
             if abs(cmd.angular.z) > 0.3:
                 cmd.angular.z = 0.3 if cmd.angular.z > 0 else -0.3
 
-            self.get_logger().info(f"Yaw correction: current_yaw={current_yaw:.2f}, cmd.angular.z={cmd.angular.z:.2f}")
+            # self.get_logger().info(f"Yaw correction: current_yaw={current_yaw:.2f}, cmd.angular.z={cmd.angular.z:.2f}")
 
         # Publish command
         self.cmd_vel_pub.publish(cmd)
