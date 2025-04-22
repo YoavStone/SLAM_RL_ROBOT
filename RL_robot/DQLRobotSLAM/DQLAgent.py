@@ -20,7 +20,7 @@ from sim_control.sim_reset_handler import SimulationResetHandler
 
 # Hyperparameters (Keep relevant ones)
 GAMMA = 0.99
-LEARNING_RATE = 4e-4
+LEARNING_RATE = 3e-4
 BATCH_SIZE = 32
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000 # Minimum experiences in buffer before learning starts

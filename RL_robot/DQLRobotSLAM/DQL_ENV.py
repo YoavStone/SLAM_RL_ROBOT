@@ -13,7 +13,7 @@ from .cropped_map_visualizer import MapVisualizationNode
 from .reward_visualizer import RewardVisualizer
 
 # Constants
-CONTINUES_PUNISHMENT = -0.75  # amount of punishment for every sec
+CONTINUES_PUNISHMENT = -1.3  # amount of punishment for every sec
 HIT_WALL_PUNISHMENT = -500.0
 CLOSE_TO_WALL_PUNISHMENT = 0.35  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
 WALL_POWER = 3.5
