@@ -68,7 +68,7 @@ def generate_launch_description():
 
     epsilon_decay_arg = DeclareLaunchArgument(
         'epsilon_decay',
-        default_value='30000',
+        default_value='45000',
         description='Number of steps over which epsilon decays from start to end value'
     )
 

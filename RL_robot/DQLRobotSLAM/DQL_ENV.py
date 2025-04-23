@@ -16,7 +16,7 @@ from .reward_visualizer import RewardVisualizer
 CONTINUES_PUNISHMENT = -1.3  # amount of punishment for every sec
 HIT_WALL_PUNISHMENT = -500.0
 CLOSE_TO_WALL_PUNISHMENT = 0.35  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
-WALL_POWER = 3.5
+WALL_POWER = 7.0
 EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
 MOVEMENT_REWARD = 1.0  # reward for moving beyond a threshold (so it wont stay in place)
 REVISIT_PENALTY = -0.1  # punishment for revisiting a cell in the map
@@ -40,6 +40,8 @@ class GazeboEnv(Node):
         self.last_exploration_reward = 0
         self.last_movement_reward = 0
         self.last_total_reward = 0
+
+        self.step_counter = 0
 
         # cropped map visualizer
         print("Creating visualization node...")
@@ -454,13 +456,81 @@ class GazeboEnv(Node):
         known_cells = sum(1 for val in self.map_processed if val != -1.0)
         return known_cells / self.total_cells
 
+    def scale_distance_by_scan_angle(self, scan_distance, scan_idx, num_sectors=16):
+        """
+        Adjust the measured distance based on scan angle to make the safety distance
+        more uniform around the robot despite the lidar being at the back.
+        Args:
+            scan_distance: Raw distance from lidar scan
+            scan_idx: Index of the scan in the array (0 to num_sectors-1)
+            num_sectors: Total number of lidar sectors
+        Returns:
+            Adjusted distance that provides consistent safety margins
+        """
+        # Calculate the angle in degrees for easier understanding
+        robot_angle_degrees = (scan_idx * 360 / num_sectors)
+
+        # Calculate scaling factors based on front distance (which stays at 1.0)
+        front_scale = 1.0
+        side_scale = 1.79  # makes side readings comparable to front
+        back_scale = 2.12  # makes back readings comparable to front
+
+        # Determine scaling factor based on the robot-relative angle
+        if 330 <= robot_angle_degrees or robot_angle_degrees <= 30:  # Front section (0° ±30°)
+            scale_factor = front_scale
+        elif 150 <= robot_angle_degrees <= 210:  # Back section (180° ±30°)
+            scale_factor = back_scale
+        else:
+            # Side sections
+            if 30 < robot_angle_degrees < 150:  # Right side of robot
+                if robot_angle_degrees < 90:  # Front-right quadrant
+                    # Interpolate from front to side
+                    factor = (robot_angle_degrees - 30) / 60
+                    scale_factor = front_scale + (side_scale - front_scale) * factor
+                else:  # Back-right quadrant
+                    # Interpolate from side to back
+                    factor = (robot_angle_degrees - 90) / 60
+                    scale_factor = side_scale + (back_scale - side_scale) * factor
+            else:  # Left side of robot (210° to 330°)
+                if robot_angle_degrees < 270:  # Back-left quadrant
+                    # Interpolate from back to side
+                    factor = (robot_angle_degrees - 210) / 60
+                    scale_factor = back_scale - (back_scale - side_scale) * factor
+                else:  # Front-left quadrant
+                    # Interpolate from side to front
+                    factor = (robot_angle_degrees - 270) / 60
+                    scale_factor = side_scale - (side_scale - front_scale) * factor
+
+        # Actually apply the scaling factor to the distance
+        adjusted_distance = scan_distance * scale_factor
+
+        # if self.step_counter % 50 == 0:
+        #     print(f"  Angle {robot_angle_degrees:.1f}°: {scan_distance:.2f}m → {adjusted_distance:.2f}m (scale: {scale_factor:.2f})")
+
+        return adjusted_distance
+
     def dis_to_wall_to_punishment(self, dt, new_dis):
+        """
+        Calculate punishment based on adjusted distances to walls
+        """
         punishment = 0
-        closest = min(new_dis)
+
+        self.step_counter += 1
+
+        # Apply distance adjustments based on scan angles
+        adjusted_distances = []
+        for idx, distance in enumerate(new_dis):
+            adjusted = self.scale_distance_by_scan_angle(distance, idx, len(new_dis))
+            adjusted_distances.append(adjusted)
+
+        closest = min(adjusted_distances)
         is_terminated = False
 
+        # if self.step_counter % 10 == 0:
+        #     self.get_logger().info(f"Closest: {closest:.2f}m")
+
         # Define the danger zone
-        danger_zone_start = self.rad_of_robot * 1.5  # Start punishment from 1.5x radius
+        danger_zone_start = self.rad_of_robot * 2  # Start punishment from 2x radius
         danger_zone_end = self.rad_of_robot  # Max punishment at actual collision
 
         # Check for immediate collision
