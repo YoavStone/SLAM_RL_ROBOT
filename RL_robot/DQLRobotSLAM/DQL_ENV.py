@@ -13,13 +13,14 @@ from .cropped_map_visualizer import MapVisualizationNode
 from .reward_visualizer import RewardVisualizer
 
 # Constants
-CONTINUES_PUNISHMENT = -1.3  # amount of punishment for every sec
+CONTINUES_PUNISHMENT = -1.2  # amount of punishment for every sec
 HIT_WALL_PUNISHMENT = -500.0
 CLOSE_TO_WALL_PUNISHMENT = 0.35  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
 WALL_POWER = 7.0
 EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
-MOVEMENT_REWARD = 1.0  # reward for moving beyond a threshold (so it wont stay in place)
+MOVEMENT_REWARD = 0.5  # reward for moving beyond a threshold (so it wont stay in place)
 REVISIT_PENALTY = -0.1  # punishment for revisiting a cell in the map
+REMEMBER_VISIT_TIME = 2.5  # how long to keep the visit time of a spot so it counts as visited in seconds
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
 ANGULAR_SPEED = 0.3 * 2  # irl: 0.3  # rad/s
@@ -39,13 +40,14 @@ class GazeboEnv(Node):
         self.last_wall_punishment = 0
         self.last_exploration_reward = 0
         self.last_movement_reward = 0
+        self.last_revisit_penalty = 0
         self.last_total_reward = 0
 
         self.step_counter = 0
 
         # cropped map visualizer
         print("Creating visualization node...")
-        self.vis_node = MapVisualizationNode()
+        self.vis_node = MapVisualizationNode(publish=False)
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
@@ -57,6 +59,7 @@ class GazeboEnv(Node):
         self.map_processed = []  # Processed map data for DQL input
         self.pos = [0.0, 0.0, 0.0]  # [orientation, x, y]
         self.slam_pose = None  # Store the latest SLAM pose
+        self.grid_position = None  # stores position on grid
         self.measured_distance_to_walls = [10.0] * 16  # distances in sixteenths of circle
         self.last_update_time = time.time()
 
@@ -375,10 +378,10 @@ class GazeboEnv(Node):
         position = self.slam_pose if self.slam_pose is not None else self.pos
 
         # Convert position to map grid coordinates
-        grid_position = self.pos_to_map_pos(position)
+        self.grid_position = self.pos_to_map_pos(position)
 
         # Return state with grid position
-        return grid_position + self.measured_distance_to_walls + self.map_processed
+        return self.grid_position + self.measured_distance_to_walls + self.map_processed
 
     def get_state_size(self):
         """Get the size of the state vector"""
@@ -388,43 +391,85 @@ class GazeboEnv(Node):
         """Get the number of possible actions"""
         return len(self.actions)
 
-    # def revisit_to_penalty(self):
-    #     """Calculate penalty for revisiting already explored areas"""
-    #     penalty = 0
-    #
-    #     # Initialize visit count map
-    #     if self.map_raw is not None:
-    #         self.visit_count_map = np.zeros(len(self.map_raw.data))
-    #     else:
-    #         self.visit_count_map = None
-    #
-    #     if self.visit_count_map is not None:
-    #         # Get current position in grid coordinates
-    #         if hasattr(self, 'map_raw') and hasattr(self, 'center_cell_x') and hasattr(self, 'center_cell_y'):
-    #             resolution = self.map_raw.info.resolution
-    #             origin_x = self.map_raw.info.origin.position.x
-    #             origin_y = self.map_raw.info.origin.position.y
-    #
-    #             curr_pos = self.slam_pose if self.slam_pose is not None else self.pos
-    #             grid_x = int((curr_pos[1] - origin_x) / resolution)
-    #             grid_y = int((curr_pos[2] - origin_y) / resolution)
-    #
-    #             # Update visit count for current cell
-    #             width = self.map_raw.info.width
-    #             cell_idx = grid_y * width + grid_x
-    #
-    #             if 0 <= cell_idx < len(self.visit_count_map):
-    #                 # Increment visit count
-    #                 self.visit_count_map[cell_idx] += 1
-    #
-    #                 # Apply penalty for revisits (scaled by number of visits)
-    #                 visit_count = self.visit_count_map[cell_idx]
-    #                 if visit_count > 1:  # Only penalize cells visited more than once
-    #                     revisit_penalty = REVISIT_PENALTY * (visit_count - 1)
-    #                     penalty += revisit_penalty
-    #                     print(f"Revisit penalty: {revisit_penalty:.2f} for {visit_count} visits")
-    #
-    #     return penalty
+    def update_visit_count(self):
+        """
+        Update the visit count for the current cell
+        Args:
+            param dt
+        """
+        # Initialize visit count map if it doesn't exist yet
+        if self.visit_count_map is None:
+            # If we have a processed map, create a matching visit count map
+            if self.map_processed:
+                # Determine dimensions of the map
+                crop_size = int(np.sqrt(len(self.map_processed)))  # if map is square
+                # Create 3D array to track visit counts and times
+                # [0] = visit count, [1] = last visit time
+                self.visit_count_map = np.zeros((crop_size, crop_size, 2), dtype=float)
+                print(f"Initialized visit count map with size {crop_size}x{crop_size}")
+            else:
+                print("Cannot initialize visit count map - no processed map available")
+                return
+
+        # Extract grid coordinates
+        _, grid_x, grid_y = self.grid_position
+
+        # Convert to integers for array indexing
+        grid_x_int = int(grid_x)
+        grid_y_int = int(grid_y)
+
+        crop_size = self.visit_count_map.shape[0]
+        if 0 <= grid_x_int < crop_size and 0 <= grid_y_int < crop_size:
+            # check time since last
+            current_time = time.time()
+            last_visit_time = self.visit_count_map[grid_x_int, grid_y_int, 1]
+            time_since_last_visit = current_time - last_visit_time
+            if time_since_last_visit > REMEMBER_VISIT_TIME:
+                self.visit_count_map[grid_x_int, grid_y_int, 0] = 0
+            self.visit_count_map[grid_x_int, grid_y_int, 1] = current_time
+
+            # Increment visit count for this cell with a 20 visits cap
+            visits = self.visit_count_map[grid_x_int, grid_y_int, 0]
+            if visits < 20:
+                visits += 1
+                self.visit_count_map[grid_x_int, grid_y_int, 0] = visits
+
+    def calculate_revisit_penalty(self, dt):
+        """
+        Calculate penalty for revisiting cells
+        Returns:
+            Penalty value (negative reward)
+        """
+        self.update_visit_count()
+
+        # Check if visit map exists
+        if self.visit_count_map is None:
+            return 0.0
+
+        # Extract grid coordinates
+        _, grid_x, grid_y = self.grid_position
+
+        # Convert to integers for array indexing
+        grid_x_int = int(grid_x)
+        grid_y_int = int(grid_y)
+
+        # Default penalty
+        penalty = 0.0
+
+        # Ensure coordinates are within bounds
+        crop_size = self.visit_count_map.shape[0]
+        if 0 <= grid_x_int < crop_size and 0 <= grid_y_int < crop_size:
+            # Get visit count for this cell
+            visits = self.visit_count_map[grid_x_int, grid_y_int, 0]
+
+            # Only penalize cells visited more than once
+            if visits > 1:
+                # Apply increasing penalty for repeated visits
+                # Penalty grows with each revisit, but with diminishing returns
+                penalty = REVISIT_PENALTY * visits * dt
+                self.last_revisit_penalty = penalty
+
+        return penalty
 
     def movement_to_reward(self, dt):
         """Calculate reward based on distance traveled since last update"""
@@ -439,7 +484,7 @@ class GazeboEnv(Node):
             )
 
             # Only reward significant movement (prevents micro-movements)
-            if distance_moved > 0.25 * dt:  # threshold
+            if distance_moved > (LINEAR_SPEED-0.05) * dt:  # threshold
                 movement_reward = MOVEMENT_REWARD * (distance_moved * 100) * dt
                 reward += movement_reward
                 # Store for visualization
@@ -513,8 +558,6 @@ class GazeboEnv(Node):
         """
         Calculate punishment based on adjusted distances to walls
         """
-        punishment = 0
-
         self.step_counter += 1
 
         # Apply distance adjustments based on scan angles
@@ -552,7 +595,7 @@ class GazeboEnv(Node):
         punishment_factor = danger_fraction ** WALL_POWER
 
         # Scale to punishment range
-        punishment = -punishment_factor * abs(HIT_WALL_PUNISHMENT) * CLOSE_TO_WALL_PUNISHMENT * dt
+        punishment = punishment_factor * HIT_WALL_PUNISHMENT * CLOSE_TO_WALL_PUNISHMENT * dt
 
         # Clip to maximum punishment
         punishment = max(punishment, HIT_WALL_PUNISHMENT)
@@ -565,7 +608,7 @@ class GazeboEnv(Node):
     def change_in_map_to_reward(self, new_map):
         """Calculate reward based on newly discovered map cells"""
         # Skip if we don't have a previous map to compare
-        if not hasattr(self, 'previous_map') or self.previous_map is None:
+        if self.previous_map is None:
             self.previous_map = new_map.copy()
             self.last_exploration_reward = 0
             return 0
@@ -620,6 +663,10 @@ class GazeboEnv(Node):
         movement_reward = self.movement_to_reward(time_from_last_env_update)
         reward += movement_reward
 
+        # Add penalty for revisiting cells
+        revisit_penalty = self.calculate_revisit_penalty(time_from_last_env_update)
+        reward += revisit_penalty
+
         # Check if finished by episode timeout or by map completion
         trunc = self.check_time_and_map_completion()
 
@@ -632,6 +679,7 @@ class GazeboEnv(Node):
             self.last_wall_punishment,
             self.last_exploration_reward,
             self.last_movement_reward,
+            self.last_revisit_penalty,
             self.last_total_reward
         )
 
@@ -671,6 +719,7 @@ class GazeboEnv(Node):
 
         # IMPORTANT: Explicitly reset the previous map to ensure exploration rewards start fresh
         self.previous_map = None
+        self.visit_count_map = None
 
         # Reset reward visualization
         self.reward_vis.reset_data()
