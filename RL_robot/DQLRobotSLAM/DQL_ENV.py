@@ -33,7 +33,7 @@ class GazeboEnv(Node):
         super().__init__('gazebo_env_node')
         # Initialize the reward visualizer
         print("Creating reward visualizer node...")
-        self.reward_vis = RewardVisualizer(print_interval=100)  # print_interval=50 for light and slightly detailed loggs
+        self.reward_vis = RewardVisualizer(print_interval=100)  # print_interval= every x steps print slightly detailed loggs
         print("Reward visualizer node created")
         # Store recent reward components for visualization
         self.last_cont_punishment = 0
@@ -403,7 +403,9 @@ class GazeboEnv(Node):
 
     def update_visit_count(self):
         """
-        Update the visit count for the current cell
+        Update:
+            the visit count for the current cell
+            if the cell was visited more than a short time ago (a few seconds) it resets its count
         Args:
             param dt
         """
@@ -446,7 +448,7 @@ class GazeboEnv(Node):
 
     def calculate_revisit_penalty(self, dt):
         """
-        Calculate penalty for revisiting cells
+        Calculate penalty for revisiting cells that were visited a short time ago (a few seconds)
         Returns:
             Penalty value (negative reward)
         """

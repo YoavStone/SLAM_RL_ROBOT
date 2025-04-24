@@ -29,6 +29,8 @@ EPSILON_END = 0.02
 EPSILON_DECAY = 45000 # Steps over which epsilon decays
 TARGET_UPDATE_FREQ = 1000 # Steps between updating the target network
 
+SAVE_VIDEO_STEP_COUNT_THRESHOLD = 100
+
 
 class DQLAgent(Node):
     def __init__(self, learning_mode=True, model_path='', best_model_name="best_dqn_gazebo_model"):
@@ -414,7 +416,7 @@ class DQLAgent(Node):
     def save_models(self):
         """Save current episode model and update best model if applicable"""
         # Save Current Episode Model
-        if self.episode_count > 100:
+        if self.episode_count > SAVE_VIDEO_STEP_COUNT_THRESHOLD:
             try:
                 episode_model_name = f"episode_{self.episode_count}_reward_{self.episode_reward:.2f}_dqn_model.pth"
                 episode_model_path = os.path.join(self.episode_model_dir, episode_model_name)

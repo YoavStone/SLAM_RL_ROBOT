@@ -83,14 +83,15 @@ def generate_launch_description():
         }.items()
     )
 
-    # Launch the odometry middleman and episode monitor
-    odom_middleman_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory(namePackage), 'launch', 'odom_middleman.launch.py')
-        ]),
-        launch_arguments={
-            'spawn_location': spawn_location
-        }.items()
+    # Episode monitor node
+    episode_monitor_node = Node(
+        package='RL_robot',
+        executable='episode_monitor',
+        name='episode_monitor',
+        output='screen',
+        parameters=[
+            {'spawn_location': spawn_location}
+        ]
     )
 
     # Launch the DQN agent with epsilon parameters
@@ -117,6 +118,6 @@ def generate_launch_description():
         robot_spawn_x_arg,
         robot_spawn_y_arg,
         gazebo_launch,      # Launch Gazebo first
-        odom_middleman_launch,  # Then launch the odom middleman and episode monitor
+        episode_monitor_node,  # Then launch the episode monitor
         dqn_launch          # Finally launch the DQN agent
     ])
