@@ -57,7 +57,8 @@ class GazeboEnv(Node):
 
         # Environment state
         self.map_processed = []  # Processed map data for DQL input
-        self.pos = [0.0, 0.0, 0.0]  # [orientation, x, y]
+        self.pos = None  # [orientation, x, y]
+        self.velocities = None  # [vx, va]
         self.slam_pose = None  # Store the latest SLAM pose
         self.grid_position = None  # stores position on grid
         self.measured_distance_to_walls = [10.0] * 16  # distances in sixteenths of circle
@@ -155,7 +156,13 @@ class GazeboEnv(Node):
         orientation = msg.pose.pose.orientation
         yaw = 2 * math.atan2(orientation.z, orientation.w)
 
+        # Extract velocities
+        vx = msg.twist.twist.linear.x
+        va = msg.twist.twist.angular.z
+
         self.pos = [yaw, x, y]
+        self.velocities = [vx, va]
+
         self.odom_ready = True
 
     def map_callback(self, msg):
@@ -270,8 +277,8 @@ class GazeboEnv(Node):
         if self.observation_space is None:
             obs_size = len(self.get_state())
             self.observation_space = spaces.Box(
-                low=np.array([-4, -100, -100] + [0] * 16 + [-1] * len(self.map_processed)),
-                high=np.array([4, 100, 100] + [10] * 16 + [1] * len(self.map_processed)),
+                low=np.array([-7, -100, -100] + [-3, -3] + [0] * 16 + [-1] * len(self.map_processed)),
+                high=np.array([7, 100, 100] + [3, 3] + [13] * 16 + [1] * len(self.map_processed)),
                 dtype=np.float32
             )
             # print(f"Observation space initialized with size {obs_size}")
@@ -380,8 +387,11 @@ class GazeboEnv(Node):
         # Convert position to map grid coordinates
         self.grid_position = self.pos_to_map_pos(position)
 
+        if self.velocities is None:
+            self.velocities = [0.0, 0.0]
+
         # Return state with grid position
-        return self.grid_position + self.measured_distance_to_walls + self.map_processed
+        return self.grid_position + self.velocities + self.measured_distance_to_walls + self.map_processed
 
     def get_state_size(self):
         """Get the size of the state vector"""
