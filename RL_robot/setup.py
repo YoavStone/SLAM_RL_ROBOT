@@ -39,10 +39,28 @@ setup(
          glob(os.path.join('rviz/*'))),
 
         (os.path.join(
-         'share', package_name, 'robot_controller/'),
-         glob(os.path.join('robot_controller/*'))),
+         'share', package_name, 'sim_control/'),
+         glob(os.path.join('sim_control/*'))),
+
+        (os.path.join(
+            'share', package_name, 'DQLRobotSLAM/'),
+         glob(os.path.join('DQLRobotSLAM/*'))),
+
+        (os.path.join(
+            'share', package_name, 'CartPoleExample/'),
+         glob(os.path.join('CartPoleExample/*'))),
+
+        (os.path.join('share', package_name, 'worlds'),
+         glob(os.path.join('worlds/*'))),
+        # All subfolders of models (e.g., models/room_walls/*)
+        *[
+            (os.path.join('share', package_name, 'models', os.path.basename(d)),
+             glob(os.path.join(d, '*')))
+            for d in glob('models/*') if os.path.isdir(d)
+        ],
+
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'torch', 'torchvision', 'torchaudio', 'gymnasium'],
     zip_safe=True,
     maintainer='yoav-stone',
     maintainer_email='yoav.stone@gmail.com',
@@ -51,8 +69,15 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'follow_wall = RL_robot.follow_left_wall:main',
+            'asymmetric_velocity_controller = sim_control.asymmetric_velocity_controller:main',
+            'teleport_service = sim_control.teleport_service:main',
+
             'control_motors = RL_robot.command_robot:main',
+
+            'follow_wall = RL_robot.follow_left_wall:main',
+
+            'cart_pole_dqn_agent = CartPoleExample.run_dqn_agentTRY:main',
+            'slam_robot_dqn_agent = DQLRobotSLAM.run_dqn_agent:main'
         ],
     },
 )

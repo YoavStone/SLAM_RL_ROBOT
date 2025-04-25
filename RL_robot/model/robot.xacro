@@ -23,7 +23,7 @@
 <!-- Wheels Dimensions -->
 <!-- r = wheels && caster radius -->
 <!-- w = wheels width -->
-<xacro:property name="r" value="0.034"/>
+<xacro:property name="r" value="0.034"/>  <!-- irl it's 0.034 -->
 <xacro:property name="w" value="0.028"/>
 
 <!-- Lengths to centers -->
@@ -41,11 +41,11 @@
 
 <!-- Material density -->
 <!-- Body material density -->
-<xacro:property name="d1" value="2710.0"/>
+<xacro:property name="d1" value="155.0"/>
 <!-- Wheel material density -->
-<xacro:property name="d2" value="2710.0"/>
+<xacro:property name="d2" value="100.0"/>
 <!-- Caster material density -->
-<xacro:property name="d3" value="2710.0"/>
+<xacro:property name="d3" value="130.0"/>
 
 <!-- ################### MASS, VOLUME, CENTER OF MASS EQU ################### -->
 <!-- Volumes -->
@@ -162,8 +162,8 @@ Iz = (2/5)*M*r^2
     <child link="wheel1_link"/>
     <origin rpy="0 0 0" xyz="${-s3} ${-s2} ${r}"/>
     <axis xyz="0 1 0"/>
-    <limit effort="50000" velocity="10"/>
-    <dynamics damping="1.0" friction="1.0"/>
+    <limit effort="0.7" velocity="30.0"/>
+    <dynamics damping="0.05" friction="0.05"/>
 </joint>
 
 <!-- wheel1 link -->
@@ -189,8 +189,8 @@ Iz = (2/5)*M*r^2
     <child link="wheel2_link"/>
     <origin rpy="0 0 0" xyz="${-s3} ${s2} ${r}"/>
     <axis xyz="0 1 0"/>
-    <limit effort="50000" velocity="10"/>
-    <dynamics damping="1.0" friction="1.0"/>
+    <limit effort="0.7" velocity="30.0"/>
+    <dynamics damping="0.05" friction="0.05"/>
 </joint>
 
 <!-- wheel2 link -->

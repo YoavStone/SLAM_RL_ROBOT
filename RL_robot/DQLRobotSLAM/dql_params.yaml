@@ -1,0 +1,18 @@
+/**:
+  ros__parameters:
+    learning_mode: true
+    model_path: ""
+    best_model_name: "gazebo_dql_model.pth"
+    # Robot parameters
+    robot_radius: 0.34
+    # DQL hyperparameters
+    gamma: 0.99
+    learning_rate: 0.0005
+    batch_size: 32
+    buffer_size: 50000
+    min_replay_size: 1000
+    epsilon_start: 1.0
+    epsilon_end: 0.02
+    epsilon_decay: 10000
+    target_update_freq: 1000
+    save_threshold: 50

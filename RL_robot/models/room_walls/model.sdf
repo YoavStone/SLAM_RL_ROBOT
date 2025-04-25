@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<sdf version="1.10">
+
+    <model name="walls">
+
+      <pose>0 0 0 0 0 0</pose>
+
+      <!-- Top wall -->
+      <link name="top_wall">
+        <pose>3.15 0 0.5 0 0 0</pose>
+        <collision name="top_wall_collision">
+          <geometry><box><size>0.3 6 1</size></box></geometry>
+        </collision>
+        <visual name="top_wall_visual">
+          <geometry><box><size>0.3 6 1</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+      </link>
+
+      <!-- Bottom wall -->
+      <link name="bottom_wall">
+        <pose>-3.15 0 0.5 0 0 0</pose>
+        <collision name="bottom_wall_collision">
+          <geometry><box><size>0.3 6 1</size></box></geometry>
+        </collision>
+        <visual name="bottom_wall_visual">
+          <geometry><box><size>0.3 6 1</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+      </link>
+
+      <!-- Left wall -->
+      <link name="left_wall">
+        <pose>0 -3.15 0.5 0 0 0</pose>
+        <collision name="left_wall_collision">
+          <geometry><box><size>6 0.3 1</size></box></geometry>
+        </collision>
+        <visual name="left_wall_visual">
+          <geometry><box><size>6 0.3 1</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+      </link>
+
+      <!-- Right wall -->
+      <link name="right_wall">
+        <pose>0 3.15 0.5 0 0 0</pose>
+        <collision name="right_wall_collision">
+          <geometry><box><size>6 0.3 1</size></box></geometry>
+        </collision>
+        <visual name="right_wall_visual">
+          <geometry><box><size>6 0.3 1</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+      </link>
+
+      <static>true</static>
+      <self_collide>false</self_collide>
+
+    </model>
+
+</sdf>
