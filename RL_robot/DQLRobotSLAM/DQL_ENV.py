@@ -11,15 +11,17 @@ from gymnasium import spaces
 
 from .cropped_map_visualizer import MapVisualizationNode
 from .reward_visualizer import RewardVisualizer
+from sim_control.sim_reset_handler import SimulationResetHandler
+
 
 # Constants
-CONTINUES_PUNISHMENT = -1.2  # amount of punishment for every sec
+CONTINUES_PUNISHMENT = -0.7  # amount of punishment for every sec
 HIT_WALL_PUNISHMENT = -500.0
 CLOSE_TO_WALL_PUNISHMENT = 0.35  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
 WALL_POWER = 7.0
 EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
 MOVEMENT_REWARD = 0.5  # reward for moving beyond a threshold (so it wont stay in place)
-REVISIT_PENALTY = -0.1  # punishment for revisiting a cell in the map
+REVISIT_PENALTY = -0.2  # punishment for revisiting a cell in the map
 REMEMBER_VISIT_TIME = 2.5  # how long to keep the visit time of a spot so it counts as visited in seconds
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
@@ -31,6 +33,13 @@ class GazeboEnv(Node):
 
     def __init__(self, rad_of_robot=0.34):
         super().__init__('gazebo_env_node')
+
+        self.declare_parameter('spawn_location', '')  # Default: empty string means random
+
+        # Get the spawn_location parameter
+        self.spawn_location_str = self.get_parameter('spawn_location').get_parameter_value().string_value
+        self.get_logger().info(f"Received parameters: spawn_location='{self.spawn_location_str}'")
+
         # Initialize the reward visualizer
         print("Creating reward visualizer node...")
         self.reward_vis = RewardVisualizer(print_interval=100)  # print_interval= every x steps print slightly detailed loggs
@@ -70,6 +79,8 @@ class GazeboEnv(Node):
         self.visit_count_map = None
         self.center_cell_x = None
         self.center_cell_y = None
+        self.current_odom = None
+        self.should_update_center = True
 
         # Action space: stop, forward, back, right, left
         self.actions = [0, 1, 2, 3, 4]
@@ -146,7 +157,7 @@ class GazeboEnv(Node):
         self.scan_ready = True
 
     def odom_callback(self, msg):
-        """Process odometry data"""
+        """Process odometry data with enhanced tracking for reset handler"""
         # Extract position
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
@@ -159,8 +170,16 @@ class GazeboEnv(Node):
         vx = msg.twist.twist.linear.x
         va = msg.twist.twist.angular.z
 
+        # Update standard position and velocity
         self.pos = [yaw, x, y]
         self.velocities = [vx, va]
+
+        # Store the full odometry message for reset handler
+        self.current_odom = msg
+
+        # Log first odometry reception
+        if not self.odom_ready:
+            self.get_logger().info(f"First odometry data received: position=[{x:.2f}, {y:.2f}]")
 
         self.odom_ready = True
 
@@ -185,23 +204,26 @@ class GazeboEnv(Node):
             crop_size_cells += 1
 
         # Store the center position (robot starting position) if not already stored
-        if self.center_cell_x is None or self.center_cell_y is None:
+        if self.should_update_center:
             # Use SLAM pose if available for better initial position
             if self.slam_pose is not None:
                 # Convert SLAM position to grid cell coordinates
                 self.center_cell_x = int((self.slam_pose[1] - origin_x) / resolution)
                 self.center_cell_y = int((self.slam_pose[2] - origin_y) / resolution)
-                print(f"Fixed map center using SLAM pose: ({self.center_cell_x}, {self.center_cell_y})")
+                print(f"Updated map center using SLAM pose: ({self.center_cell_x}, {self.center_cell_y})")
             elif self.odom_ready:
                 # Fall back to odometry if SLAM not available
                 self.center_cell_x = int((self.pos[1] - origin_x) / resolution)
                 self.center_cell_y = int((self.pos[2] - origin_y) / resolution)
-                print(f"Fixed map center using odometry: ({self.center_cell_x}, {self.center_cell_y})")
+                print(f"Updated map center using odometry: ({self.center_cell_x}, {self.center_cell_y})")
             else:
                 # If no position data, use the center of the map
                 self.center_cell_x = width // 2
                 self.center_cell_y = height // 2
-                print(f"Fixed map center using map center: ({self.center_cell_x}, {self.center_cell_y})")
+                print(f"Updated map center using map center: ({self.center_cell_x}, {self.center_cell_y})")
+
+            # Reset the flag so we don't update center again until next reset
+            self.should_update_center = False
 
         # Calculate boundaries for cropping
         half_size = crop_size_cells // 2
@@ -422,7 +444,7 @@ class GazeboEnv(Node):
 
             # Increment visit count for this cell with a 20 visits cap
             visits = self.visit_count_map[grid_x_int, grid_y_int, 0]
-            if visits < 20:
+            if visits < 25:
                 visits += 1
                 self.visit_count_map[grid_x_int, grid_y_int, 0] = visits
 
@@ -550,8 +572,6 @@ class GazeboEnv(Node):
         """
         Calculate punishment based on adjusted distances to walls
         """
-        self.step_counter += 1
-
         # Apply distance adjustments based on scan angles
         adjusted_distances = []
         for idx, distance in enumerate(new_dis):
@@ -693,6 +713,7 @@ class GazeboEnv(Node):
         self.odom_ready = False
         self.map_ready = False
         self.slam_pose_ready = False
+        self.should_update_center = True
 
         # Send stop command
         stop_cmd = Twist()
@@ -719,6 +740,40 @@ class GazeboEnv(Node):
         self.episode_start_time = time.time()
         return self.get_state(), {}  # Return state and empty info dict (gym-like interface)
 
+    def internal_reset(self):
+        """
+        Internal reset method called by the reset handler.
+        This resets the actual environment and returns the initial state.
+        """
+        # Reset Gazebo environment
+        self.get_logger().info("Performing internal environment reset...")
+
+        # Send stop command
+        stop_cmd = Twist()
+        self.cmd_vel_pub.publish(stop_cmd)
+
+        # IMPORTANT: Reset tracking data
+        self.previous_map = None
+        self.visit_count_map = None
+        self.reward_vis.reset_data()
+
+        # Set the flag to update center on next map callback
+        self.should_update_center = True
+
+        # Clear flags to force new data collection
+        self.scan_ready = False
+        self.odom_ready = False
+        self.map_ready = False
+        self.slam_pose_ready = False
+
+        # Wait for new data
+        time.sleep(0.5)
+
+        self.last_update_time = time.time()
+        self.episode_start_time = time.time()
+
+        return self.get_state(), {}
+
 
 class DQLEnv:
     """Adapter class that bridges between GazeboEnv and the DQL agent"""
@@ -727,17 +782,36 @@ class DQLEnv:
         # Initialize ROS node for environment
         self.gazebo_env = GazeboEnv(rad_of_robot=rad_of_robot)
 
+        self.reset_handler = SimulationResetHandler(self.gazebo_env)
+
+        # Check if spawn location was specified in ROS parameters
+        if self.gazebo_env.has_parameter('spawn_location'):
+            spawn_location_str = self.gazebo_env.get_parameter('spawn_location').value
+            if spawn_location_str:
+                try:
+                    # Try to parse as "x,y" format
+                    x, y = spawn_location_str.split(',')
+                    self.reset_handler.target_spawn_position = [float(x.strip()), float(y.strip())]
+                    self.gazebo_env.get_logger().info(
+                        f"Using provided spawn location: {self.reset_handler.target_spawn_position}")
+                except ValueError:
+                    self.gazebo_env.get_logger().warn(
+                        f"Could not parse spawn_location '{spawn_location_str}'. Using random position.")
+                    self.reset_handler.target_spawn_position = None
+
         # Run a few spin cycles to get initial data
         for _ in range(10):
             rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
 
-        # Don't try to access observation_space directly yet
+        # Properties needed by DQL agent
         self.observation_space = None
         self.action_space = self.gazebo_env.action_space
-
-        # Properties needed by DQL agent
         self.actions = self.gazebo_env.actions
         self.rad_of_robot = self.gazebo_env.rad_of_robot
+
+        # Track episode state
+        self.current_episode_reward = 0.0
+        self.step_count = 0
 
     def get_state_size(self):
         return self.gazebo_env.get_state_size()
@@ -755,7 +829,16 @@ class DQLEnv:
         return False
 
     def step(self, action):
-        """Execute action and get new state, reward, etc. (gym-like interface)"""
+        """
+        Execute action and get new state, reward, etc. (gym-like interface)
+        Also handles automatic environment resets when needed.
+        """
+        # Skip actions if reset is in progress
+        if self.reset_handler.is_reset_in_progress():
+            self.gazebo_env.get_logger().debug("Skipping action during reset")
+            # Return the last state with zero reward and done=False
+            return self.get_state(), 0.0, False, False, {}
+
         # Execute the action
         self.gazebo_env.execute_action(action)
 
@@ -767,18 +850,90 @@ class DQLEnv:
         # Get the new state
         new_state = self.gazebo_env.get_state()
 
-        # SINGLE reward calculation per step
+        # Calculate reward for this step
         reward, terminated = self.gazebo_env.calc_reward(
-            0.1,
+            0.1,  # Fixed time step of 0.1 seconds
             self.gazebo_env.measured_distance_to_walls,
             self.gazebo_env.map_processed
         )
 
-        return new_state, reward, terminated, False, {}
+        # Track episode reward
+        self.current_episode_reward += reward
+        self.step_count += 1
+        self.gazebo_env.step_counter = self.step_count
+
+        # Prepare info dictionary for reset handler
+        info = {
+            'percent_explored': self.gazebo_env.percent_explored(),
+            'step_count': self.step_count,
+            'episode_reward': self.current_episode_reward
+        }
+
+        # Let the reset handler evaluate if we need a reset
+        truncated = False
+
+        # Check if this is a self-termination (e.g., time limit or map completion)
+        if not terminated:
+            truncated = self.gazebo_env.check_time_and_map_completion()
+
+        # Only call the reset handler if something ended the episode
+        is_done = terminated or truncated
+        if is_done:
+            self.reset_handler.update(terminated, truncated)
+
+        return new_state, reward, terminated, truncated, info
 
     def reset(self):
-        """Reset the environment (gym-like interface)"""
-        return self.gazebo_env.reset()
+        """
+        External reset interface for the agent.
+        Returns initial state and empty info dict.
+        """
+        # Check if we've received initial odometry data
+        if self.gazebo_env.current_odom is None:
+            self.gazebo_env.get_logger().info("Waiting for initial odometry data before reset...")
+
+            # Wait for a brief period for initial data, then proceed anyway
+            start_time = time.time()
+            timeout = 5.0  # 5 second timeout
+
+            while self.gazebo_env.current_odom is None:
+                rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
+
+                if time.time() - start_time > timeout:
+                    self.gazebo_env.get_logger().warn("Timeout waiting for odometry data")
+                    break
+
+                time.sleep(0.1)
+
+        # Check if we're already in a reset state
+        if self.reset_handler.is_reset_in_progress():
+            self.gazebo_env.get_logger().info("Reset already in progress, waiting...")
+
+            # Wait until reset is complete
+            while self.reset_handler.is_reset_in_progress():
+                rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
+
+            return self.get_state(), {}
+
+        # If no reset is in progress, initiate one
+        self.gazebo_env.get_logger().info("Manual reset requested")
+
+        # Reset episode tracking
+        self.current_episode_reward = 0.0
+        self.step_count = 0
+
+        # Let the reset handler know we're starting a reset
+        self.reset_handler.is_resetting = True
+
+        # Start the reset sequence (odom correction -> teleport -> SLAM reset)
+        self.reset_handler.reset_environment()
+
+        # Wait until reset is complete
+        while self.reset_handler.is_reset_in_progress():
+            rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
+
+        # Now that reset is done, get the new state
+        return self.get_state(), {}
 
     def close(self):
         """Clean up resources"""

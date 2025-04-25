@@ -14,6 +14,8 @@ def generate_launch_description():
     epsilon_end = LaunchConfiguration('epsilon_end')
     epsilon_decay = LaunchConfiguration('epsilon_decay')
 
+    spawn_location = LaunchConfiguration('spawn_location')
+
     # Declare launch arguments
     learning_mode_arg = DeclareLaunchArgument(
         'learning_mode',
@@ -44,6 +46,12 @@ def generate_launch_description():
         'epsilon_decay',
         default_value='30000',
         description='Number of steps over which epsilon decays from start to end value'
+    )
+
+    spawn_location_arg = DeclareLaunchArgument(
+        'spawn_location',
+        default_value='',
+        description='Initial spawn location for the robot in x,y format'
     )
 
     # Get the path to your virtual environment
@@ -88,7 +96,8 @@ def generate_launch_description():
             {'model_path': model_path},
             {'epsilon_start': epsilon_start},
             {'epsilon_end': epsilon_end},
-            {'epsilon_decay': epsilon_decay}
+            {'epsilon_decay': epsilon_decay},
+            {'spawn_location': spawn_location}
         ],
     )
 
@@ -98,5 +107,6 @@ def generate_launch_description():
         epsilon_start_arg,
         epsilon_end_arg,
         epsilon_decay_arg,
+        spawn_location_arg,
         dqn_node
     ])

@@ -83,14 +83,13 @@ def generate_launch_description():
         }.items()
     )
 
-    # Episode monitor node
-    episode_monitor_node = Node(
-        package='RL_robot',
-        executable='episode_monitor',
-        name='episode_monitor',
+    teleport_service_node = Node(
+        package=namePackage, # Package where your teleport_service_node.py is located
+        executable='teleport_service', # Name of the executable (usually the Python file name)
+        name='teleport_service',
         output='screen',
         parameters=[
-            {'spawn_location': spawn_location}
+            {'model_name': 'mapping_robot'} # Example parameter if needed
         ]
     )
 
@@ -104,7 +103,8 @@ def generate_launch_description():
             'model_path': model_path,
             'epsilon_start': epsilon_start,
             'epsilon_end': epsilon_end,
-            'epsilon_decay': epsilon_decay
+            'epsilon_decay': epsilon_decay,
+            'spawn_location': spawn_location
         }.items()
     )
 
@@ -118,6 +118,6 @@ def generate_launch_description():
         robot_spawn_x_arg,
         robot_spawn_y_arg,
         gazebo_launch,      # Launch Gazebo first
-        episode_monitor_node,  # Then launch the episode monitor
-        dqn_launch          # Finally launch the DQN agent
+        teleport_service_node,
+        dqn_launch          # Launch the DQN agent (with integrated reset handler)
     ])
