@@ -59,8 +59,8 @@ class GazeboEnv(Node):
         self.map_processed = []  # Processed map data for DQL input
         self.pos = None  # [orientation, x, y]
         self.velocities = None  # [vx, va]
-        self.slam_pose = None  # Store the latest SLAM pose
-        self.grid_position = None  # stores position on grid
+        self.slam_pose = None  # Store the latest SLAM pose [orientation, x, y]
+        self.grid_position = None  # stores position on grid [sin(x), cos(x), x, y]
         self.measured_distance_to_walls = [10.0] * 16  # distances in sixteenths of circle
         self.last_update_time = time.time()
 
@@ -98,7 +98,6 @@ class GazeboEnv(Node):
         self.slam_pose_ready = False
 
         # Timer for environment update (0.1 second interval)
-        # self.timer = self.create_timer(0.1, self.update_timer_callback)
 
         print('Gazebo Environment Node initialized')
 
@@ -277,28 +276,11 @@ class GazeboEnv(Node):
         if self.observation_space is None:
             obs_size = len(self.get_state())
             self.observation_space = spaces.Box(
-                low=np.array([-7, -100, -100] + [-3, -3] + [0] * 16 + [-1] * len(self.map_processed)),
-                high=np.array([7, 100, 100] + [3, 3] + [13] * 16 + [1] * len(self.map_processed)),
+                low=np.array([-1, -1, -100, -100] + [-3, -3] + [0] * 16 + [-1] * len(self.map_processed)),
+                high=np.array([1, 1, 100, 100] + [3, 3] + [13] * 16 + [1] * len(self.map_processed)),
                 dtype=np.float32
             )
             # print(f"Observation space initialized with size {obs_size}")
-
-    def update_timer_callback(self):
-        """Timer callback to update environment state at 10Hz (0.1 seconds)"""
-        if self.scan_ready and self.map_ready and (self.odom_ready or self.slam_pose_ready):
-            dt = time.time() - self.last_update_time
-            self.last_update_time = time.time()
-
-            # This would typically be called from the DQL agent's update loop
-            new_state, reward, is_terminated = self.update_env(
-                self.map_processed,
-                self.slam_pose if self.slam_pose is not None else self.pos,
-                self.measured_distance_to_walls,
-                dt
-            )
-
-            if is_terminated:
-                print("Environment terminated")
 
     def pos_to_map_pos(self, position):
         """
@@ -310,16 +292,14 @@ class GazeboEnv(Node):
         """
         yaw, x, y = position
 
-        # Normalize yaw to be positive [0, 2π)
-        while yaw < 0:
-            yaw += 2 * math.pi
-        yaw = yaw % (2 * math.pi)
+        sin_yaw = math.sin(yaw)
+        cos_yaw = math.cos(yaw)
 
         # Check if map info is available
         if self.map_raw is None:
             print(
                 "________________________ NO MAP RAW USING NORMAL POS IF HAPPENS HORRIBLE BUG BUT ONCE IS PROBABLY FINE ________________________")
-            return [yaw, x, y]  # Return position with normalized yaw if no map info
+            return [sin_yaw, cos_yaw, x, y]  # Return position with normalized yaw if no map info
 
         # Get map metadata
         resolution = self.map_raw.info.resolution
@@ -355,7 +335,7 @@ class GazeboEnv(Node):
             grid_y = max(0, min(crop_size_cells - 1, grid_y))
 
         # Return with grid position and normalized yaw
-        return [yaw, float(grid_x), float(grid_y)]
+        return [sin_yaw, cos_yaw, float(grid_x), float(grid_y)]
 
     def action_to_cmd(self, action):
         """Convert action index to Twist command"""
@@ -424,7 +404,7 @@ class GazeboEnv(Node):
                 return
 
         # Extract grid coordinates
-        _, grid_x, grid_y = self.grid_position
+        _, _, grid_x, grid_y = self.grid_position
 
         # Convert to integers for array indexing
         grid_x_int = int(grid_x)
@@ -459,7 +439,7 @@ class GazeboEnv(Node):
             return 0.0
 
         # Extract grid coordinates
-        _, grid_x, grid_y = self.grid_position
+        _, _, grid_x, grid_y = self.grid_position
 
         # Convert to integers for array indexing
         grid_x_int = int(grid_x)
@@ -705,17 +685,6 @@ class GazeboEnv(Node):
             return reward, True
 
         return reward, is_terminated
-
-    def update_env(self, new_map, new_pos, new_dis, dt=0.1):
-        """Update environment state and calculate reward"""
-        reward, is_terminated = self.calc_reward(dt, new_dis, new_map)
-        self.map_processed = new_map
-        # Only update self.pos if we're not using SLAM pose
-        if self.slam_pose is None or new_pos is self.pos:
-            self.pos = new_pos
-        self.measured_distance_to_walls = new_dis
-        new_state = self.get_state()
-        return new_state, reward, is_terminated
 
     def reset(self):
         """Reset the environment - in Gazebo this would typically involve resetting the simulation"""
