@@ -70,7 +70,6 @@ setup(
     entry_points={
         'console_scripts': [
             'asymmetric_velocity_controller = sim_control.asymmetric_velocity_controller:main',
-            'episode_monitor = sim_control.episode_monitor:main',
             'teleport_service = sim_control.teleport_service:main',
 
             'control_motors = RL_robot.command_robot:main',
