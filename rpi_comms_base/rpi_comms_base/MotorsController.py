@@ -1,13 +1,13 @@
 import math
 import time
 
-from . import L298nDriver
+from .MotorsSynchronizer import MotorsSynchronizer
 
 
-class MotorController:
-    def __init__(self, driver, ticks_per_revolution):
+class MotorsController:
+    def __init__(self, motors_synchronizer, ticks_per_revolution):
 
-        self.driver = driver
+        self.motors_synchronizer = motors_synchronizer
 
         self.last_right_pos = 0.0
         self.last_left_pos = 0.0
@@ -27,7 +27,7 @@ class MotorController:
         self.last_time = time.time()
 
 
-    def get_motor_speeds(self):
+    def get_motors_speeds(self):
         """
         Calculate the current speed of each motor in rad/s based on encoder readings
         over a small time delta.
@@ -36,7 +36,7 @@ class MotorController:
             tuple: (right_wheel_speed, left_wheel_speed) in rad/s
         """
         # Get current motor positions
-        right_pos, left_pos = self.driver.get_motors_pos()
+        right_pos, left_pos = self.motors_synchronizer.get_motors_pos()
 
         # Calculate change in encoder ticks
         delta_right = right_pos - self.last_right_pos
@@ -73,8 +73,8 @@ class MotorController:
         error_speed_r = dt_speeds_r / self.r_motor_desired_speed
         error_speed_l = dt_speeds_l / self.l_motor_desired_speed
 
-        pwm_r = self.driver.R_Motor.pwm
-        pwm_l = self.driver.L_Motor.pwm
+        pwm_r = self.motors_synchronizer.R_Motor.pwm
+        pwm_l = self.motors_synchronizer.L_Motor.pwm
 
         if pwm_r != 0.0 != pwm_l:
             error_pwm_r = pwm_r * error_speed_r * self.pwm_change_factor
@@ -86,4 +86,4 @@ class MotorController:
         new_pwm_r = min(self.max_speed, abs(pwm_r + error_pwm_r))
         new_pwm_l = min(self.max_speed, abs(pwm_l + error_pwm_l))
 
-        self.driver.set_pwm(new_pwm_r, new_pwm_l)
+        self.motors_synchronizer.set_pwm(new_pwm_r, new_pwm_l)

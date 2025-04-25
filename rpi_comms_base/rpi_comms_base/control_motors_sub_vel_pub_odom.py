@@ -4,8 +4,8 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 import time
 import math
-from . import L298nDriver
-from . import MotorController
+from .MotorsSynchronizer import MotorsSynchronizer
+from .MotorsController import MotorsController
 
 
 class RobotControlNode(Node):
@@ -13,7 +13,7 @@ class RobotControlNode(Node):
         print("will initialized robot control node")
         super().__init__('robot_control_node')
 
-        # Initialize motor driver
+        # Initialize motors synchronizer
         # Define GPIO pins
         in1 = 17
         in2 = 27
@@ -30,8 +30,8 @@ class RobotControlNode(Node):
 
         FREQ = 1000
 
-        self.driver = L298nDriver.L298nDriver(in1, in2, in3, in4, pwmR, pwmL, FREQ, ena1, enb1, ena2, enb2)
-        self.driver.call_encoder_interrupt()
+        self.motors_synchronizer = MotorsSynchronizer(in1, in2, in3, in4, pwmR, pwmL, FREQ, ena1, enb1, ena2, enb2)
+        self.motors_synchronizer.call_encoder_interrupt()
 
         # Initialize velocity subscriber
         self.velocity_subscription = self.create_subscription(
@@ -65,7 +65,7 @@ class RobotControlNode(Node):
         self.linear_speed_factor = 1.0
         self.turn_speed_factor = 1.0
 
-        self.motor_controller = MotorController.MotorController(self.driver, self.ticks_per_revolution)
+        self.motor_controller = MotorsController(self.motors_synchronizer, self.ticks_per_revolution)
         self.closed_loop_speed_control_timer = self.create_timer(
             0.05, self.motor_controller.closed_loop_control_speed)  # 20Hz update rate
 
@@ -124,7 +124,7 @@ class RobotControlNode(Node):
 
         self.motor_controller.r_motor_desired_speed, self.motor_controller.l_motor_desired_speed = self.convert_cmd_vel_to_motor_speeds(speed, turn)
 
-        right_wheel_speed, left_wheel_speed = self.motor_controller.get_motor_speeds()
+        right_wheel_speed, left_wheel_speed = self.motor_controller.get_motors_speeds()
 
         # print('desired: ', self.motor_controller.r_motor_desired_speed, self.motor_controller.l_motor_desired_speed)
         # print('current: ', right_wheel_speed, left_wheel_speed)
@@ -137,23 +137,23 @@ class RobotControlNode(Node):
         Convert linear and angular velocity to motor dir
         """
         if speed == 0.0 == turn:
-            self.driver.stop()
+            self.motors_synchronizer.stop()
         elif abs(speed) > 0:
             # Primarily moving forward/backward
             if speed > 0:
-                self.driver.go_forward()
+                self.motors_synchronizer.go_forward()
             else:
-                self.driver.go_backwards()
+                self.motors_synchronizer.go_backwards()
         else:
             # Primarily turning
             if turn > 0:
-                self.driver.turn_left()
+                self.motors_synchronizer.turn_left()
             else:
-                self.driver.turn_right()
+                self.motors_synchronizer.turn_right()
 
     def publish_position(self):
         # Get current motor positions
-        right_pos, left_pos = self.driver.get_motors_pos()
+        right_pos, left_pos = self.motors_synchronizer.get_motors_pos()
 
         # Calculate change in encoder ticks
         delta_right = right_pos - self.last_right_pos

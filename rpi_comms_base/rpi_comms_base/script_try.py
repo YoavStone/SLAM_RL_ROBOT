@@ -1,4 +1,4 @@
-from . import L298nDriver
+from .MotorsSynchronizer import MotorsSynchronizer
 
 
 def is_number_between_0_and_1(text):
@@ -28,7 +28,7 @@ def main():
     FREQ = 1000  # 1000 HZ - Note: gpiozero handles PWM frequency internally
 
     # Create driver without chip handle
-    driver = L298nDriver.L298nDriver(in1, in2, in3, in4, pwmR, pwmL, FREQ, ena1, enb1, ena2, enb2)
+    driver = MotorsSynchronizer(in1, in2, in3, in4, pwmR, pwmL, FREQ, ena1, enb1, ena2, enb2)
     driver.call_encoder_interrupt()
 
     print("\n")
