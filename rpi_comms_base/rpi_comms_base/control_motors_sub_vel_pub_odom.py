@@ -3,9 +3,10 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 import time
-import math
+
 from .MotorsSynchronizer import MotorsSynchronizer
 from .MotorsController import MotorsController
+from .RobotPositionCalculator import RobotPositionCalculator
 
 
 class RobotControlNode(Node):
@@ -38,28 +39,20 @@ class RobotControlNode(Node):
             Twist,
             'cmd_vel',
             self.velocity_callback,
-            10)
+            10
+        )
 
         # Initialize position publisher
         self.odom_publisher = self.create_publisher(
             Odometry,
             'odom_robot',
-            10)
-
-        # Set up timer for regular position updates
-        self.publisher_timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
+            10
+        )
 
         # Set up parameters for odometry calculation
         self.wheel_radius = 0.034  # meters
         self.wheel_separation = 0.34  # meters
         self.ticks_per_revolution = 170  # based on your encoder
-        self.last_right_pos = 0
-        self.last_left_pos = 0
-
-        # Robot pose (x, y, theta)
-        self.x = 0.0
-        self.y = 0.0
-        self.theta = 0.0
 
         # Speed multiplier factor
         self.linear_speed_factor = 1.0
@@ -71,6 +64,11 @@ class RobotControlNode(Node):
 
         # Time tracking
         self.last_time = time.time()
+
+        self.odom_calculator = RobotPositionCalculator(self.motors_synchronizer, self.wheel_radius, self.wheel_separation, self.ticks_per_revolution)
+
+        # Set up timer for regular position updates
+        self.publisher_timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
 
         print('Robot Control Node has been initialized')
 
@@ -153,73 +151,9 @@ class RobotControlNode(Node):
 
     def publish_position(self):
         # Get current motor positions
-        right_pos, left_pos = self.motors_synchronizer.get_motors_pos()
-
-        # Calculate change in encoder ticks
-        delta_right = right_pos - self.last_right_pos
-        delta_left = left_pos - self.last_left_pos
-
-        # Update stored positions
-        self.last_right_pos = right_pos
-        self.last_left_pos = left_pos
-
-        # Calculate time delta
-        current_time = time.time()
-        dt = current_time - self.last_time
-        self.last_time = current_time
-
-        if dt == 0:
-            return  # Avoid division by zero
-
-        # Convert ticks to distance traveled by each wheel
-        right_distance = 2 * math.pi * self.wheel_radius * delta_right / self.ticks_per_revolution
-        left_distance = 2 * math.pi * self.wheel_radius * delta_left / self.ticks_per_revolution
-
-        # Calculate linear and angular displacement
-        linear_displacement = (right_distance + left_distance) / 2.0
-        angular_displacement = (right_distance - left_distance) / self.wheel_separation
-
-        # Update pose
-        self.theta += angular_displacement
-        # Normalize theta to [-pi, pi]
-        self.theta = math.atan2(math.sin(self.theta), math.cos(self.theta))
-
-        # Update position based on heading
-        self.x += linear_displacement * math.cos(self.theta)
-        self.y += linear_displacement * math.sin(self.theta)
-
-        # Calculate velocities
-        linear_velocity = linear_displacement / dt
-        angular_velocity = angular_displacement / dt
-
-        # Create and publish odometry message
-        odom = Odometry()
-        odom.header.stamp = self.get_clock().now().to_msg()
-        odom.header.frame_id = "odom"
-        odom.child_frame_id = "base_footprint"
-
-        # Set position
-        odom.pose.pose.position.x = self.x
-        odom.pose.pose.position.y = self.y
-        odom.pose.pose.position.z = 0.0
-
-        # Set orientation (quaternion from yaw)
-        cy = math.cos(self.theta * 0.5)
-        sy = math.sin(self.theta * 0.5)
-        odom.pose.pose.orientation.x = 0.0
-        odom.pose.pose.orientation.y = 0.0
-        odom.pose.pose.orientation.z = sy
-        odom.pose.pose.orientation.w = cy
-
-        # Set velocity
-        odom.twist.twist.linear.x = linear_velocity
-        odom.twist.twist.angular.z = angular_velocity
-
+        odom = self.odom_calculator.create_odom_message(self.get_clock().now().to_msg())
         # Publish the message
         self.odom_publisher.publish(odom)
-
-        if abs(delta_right) > 0 or abs(delta_left) > 0:
-            print(f'Position: ({self.x:.3f}, {self.y:.3f}, {self.theta:.3f}), R: {right_pos}, L: {left_pos}')
 
 
 def main(args=None):
