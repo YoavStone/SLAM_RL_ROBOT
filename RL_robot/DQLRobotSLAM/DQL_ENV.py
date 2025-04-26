@@ -763,21 +763,6 @@ class DQLEnv:
 
         self.reset_handler = SimulationResetHandler(self.gazebo_env)
 
-        # Check if spawn location was specified in ROS parameters
-        if self.gazebo_env.has_parameter('spawn_location'):
-            spawn_location_str = self.gazebo_env.get_parameter('spawn_location').value
-            if spawn_location_str:
-                try:
-                    # Try to parse as "x,y" format
-                    x, y = spawn_location_str.split(',')
-                    self.reset_handler.target_spawn_position = [float(x.strip()), float(y.strip())]
-                    self.gazebo_env.get_logger().info(
-                        f"Using provided spawn location: {self.reset_handler.target_spawn_position}")
-                except ValueError:
-                    self.gazebo_env.get_logger().warn(
-                        f"Could not parse spawn_location '{spawn_location_str}'. Using random position.")
-                    self.reset_handler.target_spawn_position = None
-
         # Run a few spin cycles to get initial data
         for _ in range(10):
             rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)

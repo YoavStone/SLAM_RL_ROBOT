@@ -10,6 +10,36 @@ from std_msgs.msg import String
 import os
 
 
+class SpawnPositionHandler:
+    def __init__(self, staring_pos):
+        self.positions = [
+            [0.0, 0.0],
+            [6.3, 0.0],
+            [-6.3, 0.0],
+            [0.0, 6.3],
+            [0.0, -6.3]
+        ]
+        try:
+            x, y = staring_pos.split(',')
+            self.staring_pos = [float(x.strip()), float(y.strip())]
+        except ValueError:
+            self.staring_pos = None
+            print("no start pos specified teleport to random locations")
+        self.target_spawn_position = None
+
+    def get_target_position(self):
+        """Get target position and yaw for teleportation"""
+        # Random yaw angle
+        yaw = random.choice([0.0, math.pi / 2, math.pi, math.pi * 3 / 2])
+
+        if self.staring_pos is not None:
+            # Use the provided spawn location if available
+            return [self.staring_pos[0], self.staring_pos[1], yaw]
+        else:
+            # Choose a random position from predefined positions
+            chosen_position = random.choice(self.positions)
+            return [chosen_position[0], chosen_position[1], yaw]
+
 class SimulationResetHandler:
     """
     A robust reset handler that combines odometry correction like in EpisodeMonitor
@@ -36,16 +66,8 @@ class SimulationResetHandler:
         self.world_name = 'empty'
 
         # Predefined positions for teleportation
-        self.positions = [
-            [0.0, 0.0],
-            [6.3, 0.0],
-            [-6.3, 0.0],
-            [0.0, 6.3],
-            [0.0, -6.3]
-        ]
-
-        # Target spawn position (will be set if specified in parameters)
-        self.target_spawn_position = None
+        staring_pos = self.env.get_parameter('spawn_location').value
+        self.spawn_position_handler = SpawnPositionHandler(staring_pos)
 
         # SLAM reset client
         self.clear_slam_map_client = self.env.create_client(
@@ -239,25 +261,12 @@ class SimulationResetHandler:
 
         return yaw
 
-    def get_target_position(self):
-        """Get target position and yaw for teleportation"""
-        # Random yaw angle
-        yaw = random.choice([0.0, math.pi / 2, math.pi, math.pi * 3 / 2])
-
-        if self.target_spawn_position is not None:
-            # Use the provided spawn location if available
-            return [self.target_spawn_position[0], self.target_spawn_position[1], yaw]
-        else:
-            # Choose a random position from predefined positions
-            chosen_position = random.choice(self.positions)
-            return [chosen_position[0], chosen_position[1], yaw]
-
     def direct_teleport(self):
         """
         Teleport the robot by publishing a teleport command to the teleport service.
         """
         # Get target position and orientation
-        target_x, target_y, yaw = self.get_target_position()
+        target_x, target_y, yaw = self.spawn_position_handler.get_target_position()
 
         # Log the teleport
         print(f"Publishing teleport command to: ({target_x}, {target_y}, {yaw})")
