@@ -3,17 +3,17 @@ import torch.nn as nn
 import numpy as np
 
 
-class DQN(nn.Module):
-    def __init__(self, env):
+class DQNetwork(nn.Module):
+    def __init__(self, observation_space_shape, action_space_n):
         super().__init__()
-        in_features = int(np.prod(env.observation_space.shape))
+        in_features = int(np.prod(observation_space_shape))
 
         self.net = nn.Sequential(
             nn.Linear(in_features, 256),  # input=>128=>64=>output
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, env.action_space.n)
+            nn.Linear(128, action_space_n)
         )
 
     def forward(self, x):

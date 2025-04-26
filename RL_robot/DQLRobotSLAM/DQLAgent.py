@@ -11,7 +11,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty
 
-from .DQN import DQN
+from .DQNetwork import DQNetwork
 from .DQLEnv import DQLEnv
 
 # Hyperparameters
@@ -81,8 +81,8 @@ class DQLAgent(Node):
         self.get_logger().info(f"Action space size: {self.env.action_space.n}")
 
         # --- Network Initialization ---
-        self.q_network = DQN(self.env)
-        self.target_net = DQN(self.env)
+        self.q_network = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
+        self.target_net = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
 
         # --- Load Pre-trained Model (if specified) ---
         load_path = self.model_path if self.model_path else self.best_model_name  # Try loading best if no specific path given
