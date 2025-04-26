@@ -12,7 +12,7 @@ from rclpy.node import Node
 from std_msgs.msg import Empty
 
 from .DQN import DQN
-from .DQL_ENV import DQLEnv
+from .DQLEnv import DQLEnv
 
 # Hyperparameters
 GAMMA = 0.99
