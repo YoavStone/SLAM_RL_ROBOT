@@ -15,17 +15,17 @@ from sim_control.sim_reset_handler import SimulationResetHandler
 
 
 # Constants
-CONTINUES_PUNISHMENT = -0.7  # amount of punishment for every sec
+CONTINUES_PUNISHMENT = -1.0  # amount of punishment for every sec
 HIT_WALL_PUNISHMENT = -500.0
 CLOSE_TO_WALL_PUNISHMENT = 0.35  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
 WALL_POWER = 7.0
 EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
-MOVEMENT_REWARD = 0.5  # reward for moving beyond a threshold (so it wont stay in place)
+MOVEMENT_REWARD = 0.9  # reward for moving beyond a threshold (so it wont stay in place)
 REVISIT_PENALTY = -0.2  # punishment for revisiting a cell in the map
-REMEMBER_VISIT_TIME = 2.5  # how long to keep the visit time of a spot so it counts as visited in seconds
+REMEMBER_VISIT_TIME = 1.5  # how long to keep the visit time of a spot so it counts as visited in seconds
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
-ANGULAR_SPEED = 0.3 * 2  # irl: 0.3  # rad/s
+ANGULAR_SPEED = 0.3  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
@@ -532,7 +532,7 @@ class GazeboEnv(Node):
         # Calculate scaling factors based on front distance (which stays at 1.0)
         front_scale = 1.0
         side_scale = 1.79  # makes side readings comparable to front
-        back_scale = 2.12  # makes back readings comparable to front
+        back_scale = 2.10  # makes back readings comparable to front
 
         # Determine scaling factor based on the robot-relative angle
         if 330 <= robot_angle_degrees or robot_angle_degrees <= 30:  # Front section (0° ±30°)
@@ -563,7 +563,7 @@ class GazeboEnv(Node):
         # Actually apply the scaling factor to the distance
         adjusted_distance = scan_distance * scale_factor
 
-        # if self.step_counter % 50 == 0:
+        # if self.step_counter % 20 == 0:
         #     print(f"  Angle {robot_angle_degrees:.1f}°: {scan_distance:.2f}m → {adjusted_distance:.2f}m (scale: {scale_factor:.2f})")
 
         return adjusted_distance
@@ -580,9 +580,6 @@ class GazeboEnv(Node):
 
         closest = min(adjusted_distances)
         is_terminated = False
-
-        # if self.step_counter % 10 == 0:
-        #     self.get_logger().info(f"Closest: {closest:.2f}m")
 
         # Define the danger zone
         danger_zone_start = self.rad_of_robot * 2  # Start punishment from 2x radius

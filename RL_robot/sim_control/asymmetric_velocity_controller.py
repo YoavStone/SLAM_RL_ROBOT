@@ -7,6 +7,9 @@ import numpy as np
 import time
 
 
+ANGULAR_SPEED_FACTOR = 1.5
+
+
 class AsymmetricVelocityController(Node):
     def __init__(self):
         super().__init__('asymmetric_velocity_controller')
@@ -61,7 +64,7 @@ class AsymmetricVelocityController(Node):
     def cmd_vel_callback(self, msg):
         # Store the requested target velocities
         self.target_linear_vel = msg.linear.x
-        self.target_angular_vel = msg.angular.z
+        self.target_angular_vel = msg.angular.z * ANGULAR_SPEED_FACTOR
 
     def update_velocity(self):
         """Apply acceleration constraints and publish velocity"""

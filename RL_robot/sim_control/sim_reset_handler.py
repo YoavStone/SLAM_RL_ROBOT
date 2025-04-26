@@ -134,7 +134,7 @@ class SimulationResetHandler:
         time.sleep(0.5)
 
         # Maximum time to allow for odometry correction
-        max_correction_time = 30.0  # 30 seconds
+        max_correction_time = 45.0  # 45 seconds
         start_time = time.time()
 
         # Start with position correction phase
@@ -197,10 +197,7 @@ class SimulationResetHandler:
                         cmd.angular.z = 0.5 if cmd.angular.z > 0 else -0.5
                 else:
                     # Now that we're facing the target, move forward
-                    linear_speed = 0.5 * distance
-                    # Limit linear speed
-                    if abs(linear_speed) > 0.5:
-                        linear_speed = 0.5 if linear_speed > 0 else -0.5
+                    linear_speed = 0.8 * distance
                     cmd.linear.x = linear_speed
 
                     # Still apply minor angular corrections
