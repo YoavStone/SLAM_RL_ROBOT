@@ -227,7 +227,7 @@ class DQLAgent(Node):
             action = self.q_network.act(self.current_obs)  # Exploit
 
         # --- Environment Step ---
-        new_obs, reward, terminated, truncated, info = self.env.step(action)
+        new_obs, reward, terminated, truncated, _ = self.env.step(action)
         is_done = terminated or truncated
 
         # Check if we received a valid observation
@@ -247,7 +247,7 @@ class DQLAgent(Node):
 
         # --- Episode End Handling ---
         if is_done:
-            self.handle_episode_end(info)
+            self.handle_episode_end()
         else:
             # Learning step
             self.learn_step()
@@ -273,7 +273,7 @@ class DQLAgent(Node):
         action = self.q_network.act(self.current_obs)
 
         # Execute action
-        new_obs, reward, terminated, truncated, info = self.env.step(action)
+        new_obs, reward, terminated, truncated, _ = self.env.step(action)
         is_done = terminated or truncated
 
         # Handle invalid observation
@@ -291,7 +291,7 @@ class DQLAgent(Node):
             self.current_obs, _ = self.env.reset()
             self.episode_reward = 0.0
 
-    def handle_episode_end(self, info):
+    def handle_episode_end(self):
         """Handle the end of a training episode"""
         self.episode_count += 1
         self.reward_buffer.append(self.episode_reward)  # Add final reward to buffer for avg calculation
