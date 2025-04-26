@@ -56,7 +56,7 @@ class GazeboEnv(Node):
 
         # cropped map visualizer
         print("Creating visualization node...")
-        self.vis_node = MapVisualizationNode(publish=False)
+        self.vis_node = MapVisualizationNode(publish=True)
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
@@ -715,6 +715,12 @@ class GazeboEnv(Node):
         self.slam_pose_ready = False
         self.should_update_center = True
 
+        self.map_processed = None
+        self.pos = None
+        self.slam_pose = None
+        self.grid_position = None
+        self.velocities = None
+
         # Send stop command
         stop_cmd = Twist()
         self.cmd_vel_pub.publish(stop_cmd)
@@ -722,6 +728,13 @@ class GazeboEnv(Node):
         # IMPORTANT: Explicitly reset the previous map to ensure exploration rewards start fresh
         self.previous_map = None
         self.visit_count_map = None
+        self.last_position = None
+        self.map_raw = None
+        self.visit_count_map = None
+        self.center_cell_x = None
+        self.center_cell_y = None
+        self.current_odom = None
+        self.should_update_center = True
 
         # Reset reward visualization
         self.reward_vis.reset_data()
@@ -739,40 +752,6 @@ class GazeboEnv(Node):
         self.last_update_time = time.time()
         self.episode_start_time = time.time()
         return self.get_state(), {}  # Return state and empty info dict (gym-like interface)
-
-    def internal_reset(self):
-        """
-        Internal reset method called by the reset handler.
-        This resets the actual environment and returns the initial state.
-        """
-        # Reset Gazebo environment
-        self.get_logger().info("Performing internal environment reset...")
-
-        # Send stop command
-        stop_cmd = Twist()
-        self.cmd_vel_pub.publish(stop_cmd)
-
-        # IMPORTANT: Reset tracking data
-        self.previous_map = None
-        self.visit_count_map = None
-        self.reward_vis.reset_data()
-
-        # Set the flag to update center on next map callback
-        self.should_update_center = True
-
-        # Clear flags to force new data collection
-        self.scan_ready = False
-        self.odom_ready = False
-        self.map_ready = False
-        self.slam_pose_ready = False
-
-        # Wait for new data
-        time.sleep(0.5)
-
-        self.last_update_time = time.time()
-        self.episode_start_time = time.time()
-
-        return self.get_state(), {}
 
 
 class DQLEnv:
@@ -913,6 +892,8 @@ class DQLEnv:
             while self.reset_handler.is_reset_in_progress():
                 rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
 
+            self.gazebo_env.reset()
+
             return self.get_state(), {}
 
         # If no reset is in progress, initiate one
@@ -931,6 +912,8 @@ class DQLEnv:
         # Wait until reset is complete
         while self.reset_handler.is_reset_in_progress():
             rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
+
+        self.gazebo_env.reset()
 
         # Now that reset is done, get the new state
         return self.get_state(), {}

@@ -1,72 +1,41 @@
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import Empty
-from slam_toolbox.srv import Reset
-from geometry_msgs.msg import Twist, Pose, Quaternion # Still needed for odom correction and internal pose representation
-from nav_msgs.msg import Odometry
-import random
 import math
 import time
-from std_msgs.msg import String # Import the String message type
-
-# Removed the placeholder TeleportPose class as we are using std_msgs/msg/String
+import random
+import subprocess
+from slam_toolbox.srv import Reset
+from geometry_msgs.msg import Twist
+import rclpy
+import threading
+from std_msgs.msg import String
+import os
 
 
 class SimulationResetHandler:
     """
-    Enhanced handler that publishes a String message to trigger robot teleportation
-    by a separate service node, and performs odometry correction.
-    This version works by publishing a message, decoupling the teleport logic.
+    A robust reset handler that combines odometry correction like in EpisodeMonitor
+    with proper thread management and improved teleport commands.
     """
 
     def __init__(self, env):
-        """
-        Initialize the reset handler.
+        """Initialize with reference to the environment"""
+        # Store environment reference
+        self.env = env
+        self.logger = env.get_logger()
+        self.logger.info("SimulationResetHandler initializing...")
 
-        Args:
-            env: The environment object (expected to be a ROS 2 Node) that will be reset
-        """
+        # Reset state with manual lock
+        self._reset_lock = threading.Lock()
+        self._is_resetting = False
         self.is_first_ep = True
 
-        self.env = env # The ROS 2 Node instance from the environment
-        self.logger = env.get_logger() # Use the environment's logger
-        self.is_resetting = False
+        # Thread management
+        self._reset_thread = None
 
-        # Flag to prevent reset attempts before initial data (handled by waiting for odom)
-        self.initialized = False
+        # Model configuration
+        self.model_name = 'mapping_robot'
+        self.world_name = 'empty'
 
-        # Directly use the parameters from EpisodeMonitor (or get them from env if available)
-        # For this example, we'll hardcode or use defaults like the original
-        self.spawn_location_str = ''  # Default: empty string means random
-        self.target_spawn_position = None # Will be set if spawn_location_str is parsed
-
-        # Reset tracking
-        self.reset_count = 0
-        self.last_reset_time = time.time()
-
-        # Teleport attempt tracking (less relevant with this pattern)
-        self.teleport_attempt_count = 0
-        self.max_teleport_attempts = 10
-        self.correction_timeout = 0
-
-        # Timer references - managed by the handler, created via env node
-        self.teleport_timer = None
-        self.check_timer = None
-        self.retry_check_timer = None
-        self.retry_teleport_timer = None
-        self.control_timer = None
-
-        # State for the correction phase
-        self.correction_phase = 'position'  # 'position' or 'yaw'
-
-        # Current odometry state - will be updated from environment (env.current_odom)
-        # Ensure your environment node updates env.current_odom from its odom subscription
-        self.current_odom = None # This will be a reference to self.env.current_odom
-
-        # Robot model name in Gazebo - match your naming (needed for the teleport service node)
-        self.model_name = 'mapping_robot' # This will be passed in the message or used by the service node
-
-        # Predefined possible random positions
+        # Predefined positions for teleportation
         self.positions = [
             [0.0, 0.0],
             [6.3, 0.0],
@@ -75,269 +44,204 @@ class SimulationResetHandler:
             [0.0, -6.3]
         ]
 
-        # Publisher for the teleport command message
-        # Topic name: /teleport_command (or choose a suitable name)
-        # Message type: std_msgs/msg/String
-        self.teleport_pub = self.env.create_publisher(
-            String, # Use String message type
-            '/teleport_command',
-            10 # QoS history depth
-        )
-        self.logger.info("Created publisher for /teleport_command using String message")
+        # Target spawn position (will be set if specified in parameters)
+        self.target_spawn_position = None
 
-
-        # Client for SLAM Toolbox's reset service
+        # SLAM reset client
         self.clear_slam_map_client = self.env.create_client(
             Reset,
             '/slam_toolbox/reset'
         )
 
-        # Removed wait_for_service from __init__ to allow the node to start faster.
-        # The wait for SLAM reset will happen just before calling it.
-        self.logger.info("Simulation reset handler initialized.")
+        self.env.teleport_pub = self.env.create_publisher(
+            String,
+            '/teleport_command',
+            10
+        )
 
+        self.logger.info("SimulationResetHandler initialized")
 
     def update(self, terminated, truncated):
-        """
-        Update episode state and check if reset is needed.
-        This method is called by the environment's main loop.
-
-        Args:
-            terminated: Whether episode terminated (e.g., collision)
-            truncated: Whether episode truncated (e.g., time limit)
-        Returns:
-            bool: True if episode ended and reset started, False otherwise.
-        """
-        # Check if episode is done and if we are not already resetting
+        """Handle episode termination and trigger reset"""
         is_done = terminated or truncated
 
-        if is_done and not self.is_resetting:
-            self.episode_callback(None) # Trigger the reset process
-            return True # Indicate that a reset has started
-
-        return False # Indicate that no reset was started
-
-    def episode_callback(self, msg):
-        """Handle episode end signal, just like in EpisodeMonitor."""
-        # Check for too-frequent resets
-        current_time = time.time()
-        time_since_last = current_time - self.last_reset_time
-
-        if time_since_last < 1.0:  # Less than 1 second since last reset
-            self.reset_count += 1
-            if self.reset_count > 3:  # If we get more than 3 rapid signals
-                self.logger.warn(f"Too many resets in quick succession ({self.reset_count}), adding delay")
-                time.sleep(2.0)  # Longer cooldown
-                self.reset_count = 0
-        else:
-            self.reset_count = 0  # Reset the counter if enough time has passed
-
-        self.last_reset_time = current_time
-
-        # Prevent concurrent resets (already checked in update, but good defensive check)
-        if self.is_resetting:
-            self.logger.info("Reset already in progress, ignoring episode_end signal")
-            return
-
-        self.logger.info("📩 Episode ended signal received — starting reset process")
-
-        self.is_resetting = True
-        try:
-            # Start with odom correction and then trigger teleport
+        # Use thread-safe check and set to prevent concurrent resets
+        if is_done and not self.is_reset_in_progress():
+            # Start reset process in background
             self.reset_environment()
-        except Exception as e:
-             self.logger.error(f"Error during reset process: {e}")
-             # Ensure is_resetting is reset even on error
-             self.is_resetting = False
-
-    def reset_environment(self):
-        """Reset the environment by first correcting odometry then triggering teleport"""
-        # Ensure we have odometry data before proceeding with correction
-        # The environment node should be updating self.env.current_odom
-        if self.is_first_ep:
-            self.is_first_ep = False
-            self.reset_slam_and_finalize()
             return True
 
-        if self.env.current_odom is None:
-            self.logger.warn("Cannot start odom correction - no odometry data yet. Waiting...")
-            # We could add a timer here to retry starting correction if odom is still None
-            # For simplicity, we'll assume the env will eventually provide odom
-            # If odom never arrives, the correction timeout will eventually trigger teleport.
-            pass # Just log and wait for odom to appear in the correction loop
+        return False
 
-        self.logger.info("📩 Starting reset process - first correcting odometry")
-        # Start with odom correction
-        self.start_odom_correction()
-        # Note: reset_environment now just *starts* the process. The teleport and finalization
-        # happen within the correction control loop or its timeout handler.
-        return True # Indicate that the reset process has been initiated
+    def reset_environment_thread_func(self):
+        """Reset function that runs in a thread"""
+        try:
+            self.logger.info("Reset thread started")
 
-    def start_odom_correction(self):
-        """Start the control loop to get robot back to zero odom"""
-        self.logger.info("Starting odom correction control loop")
+            # Stop the robot first
+            stop_cmd = Twist()
+            self.env.cmd_vel_pub.publish(stop_cmd)
+            time.sleep(0.5)
 
-        # Stop any existing control timer
-        if self.control_timer:
-            self.control_timer.cancel()
+            # For first episode, skip odometry correction
+            if self.is_first_ep:
+                self.is_first_ep = False
+                self.direct_teleport()  # Use direct teleport instead of subprocess
+            else:
+                # Perform odometry correction, then teleport
+                self.perform_odometry_correction()
 
-        # First send a stop command to ensure the robot is stationary
+            # All done
+            self.logger.info("Reset process completed")
+
+        except Exception as e:
+            self.logger.error(f"Error in reset thread: {e}")
+        finally:
+            # Always release reset flag at the end
+            with self._reset_lock:
+                self._is_resetting = False
+                self._reset_thread = None
+
+    def perform_odometry_correction(self):
+        """Drive robot back to zero position and orientation, then teleport"""
+        self.logger.info("Starting odometry correction")
+
+        # First send stop command to ensure the robot is stationary
         stop_cmd = Twist()
         self.env.cmd_vel_pub.publish(stop_cmd)
-        time.sleep(0.5) # Small delay for command to take effect
+        time.sleep(0.5)
+
+        # Maximum time to allow for odometry correction
+        max_correction_time = 30.0  # 30 seconds
+        start_time = time.time()
 
         # Start with position correction phase
-        self.correction_phase = 'position'
+        correction_phase = 'position'
 
-        # Set timeout for the odom correction
-        self.correction_timeout = time.time() + 30.0  # 30 seconds timeout
+        # Continue until time limit or position & orientation are corrected
+        while time.time() - start_time < max_correction_time:
+            # Check if odometry data is available
+            if self.env.current_odom is None:
+                self.logger.warn("No odometry data available for correction")
+                time.sleep(0.5)
+                continue
 
-        # Start the control loop timer using the environment's node
-        self.control_timer = self.env.create_timer(0.1, self.correction_control_loop)
+            # Get current position and orientation
+            current_x = self.env.current_odom.pose.pose.position.x
+            current_y = self.env.current_odom.pose.pose.position.y
+            current_yaw = self.get_current_yaw()
+
+            # Create velocity command
+            cmd = Twist()
+
+            if correction_phase == 'position':
+                # Calculate distance to origin
+                distance = math.sqrt(current_x ** 2 + current_y ** 2)
+
+                # If close enough to origin, switch to yaw correction
+                if distance < 0.05:
+                    self.logger.info(f"Reached origin position: ({current_x:.3f}, {current_y:.3f})")
+
+                    # Switch to yaw correction
+                    correction_phase = 'yaw'
+
+                    # Stop the robot before yaw correction
+                    stop_cmd = Twist()
+                    self.env.cmd_vel_pub.publish(stop_cmd)
+                    time.sleep(0.5)
+
+                    continue  # Skip to next iteration
+
+                # Calculate angle to origin
+                angle_to_origin = math.atan2(-current_y, -current_x)
+
+                # Calculate angular difference
+                angle_diff = angle_to_origin - current_yaw
+
+                # Normalize to [-pi, pi]
+                while angle_diff > math.pi:
+                    angle_diff -= 2 * math.pi
+                while angle_diff < -math.pi:
+                    angle_diff += 2 * math.pi
+
+                # First focus on turning to face the target
+                if abs(angle_diff) > 0.2:
+                    # Only turn, no forward movement
+                    cmd.linear.x = 0.0
+                    cmd.angular.z = angle_diff * 0.5
+
+                    # Limit angular velocity
+                    if abs(cmd.angular.z) > 0.5:
+                        cmd.angular.z = 0.5 if cmd.angular.z > 0 else -0.5
+                else:
+                    # Now that we're facing the target, move forward
+                    linear_speed = 0.5 * distance
+                    # Limit linear speed
+                    if abs(linear_speed) > 0.5:
+                        linear_speed = 0.5 if linear_speed > 0 else -0.5
+                    cmd.linear.x = linear_speed
+
+                    # Still apply minor angular corrections
+                    cmd.angular.z = angle_diff * 0.5
+                    # Limit angular velocity
+                    if abs(cmd.angular.z) > 0.5:
+                        cmd.angular.z = 0.5 if cmd.angular.z > 0 else -0.5
+
+            elif correction_phase == 'yaw':
+                # Yaw correction phase - rotate to yaw=0
+
+                # If close enough to zero yaw, finish correction
+                if abs(current_yaw) < 0.02:
+                    self.logger.info(f"Reached target yaw: {current_yaw:.3f}")
+
+                    # Stop the robot
+                    stop_cmd = Twist()
+                    self.env.cmd_vel_pub.publish(stop_cmd)
+                    time.sleep(0.5)
+
+                    # Once odom is corrected, teleport the robot
+                    self.direct_teleport()  # Use direct teleport instead of subprocess
+                    return  # Exit the correction loop
+
+                # Only rotate, no linear movement
+                cmd.linear.x = 0.0
+                cmd.angular.z = -current_yaw * 0.5
+
+                # Limit angular velocity
+                if abs(cmd.angular.z) > 0.3:
+                    cmd.angular.z = 0.3 if cmd.angular.z > 0 else -0.3
+
+            # Publish command
+            self.env.cmd_vel_pub.publish(cmd)
+
+            # Brief sleep to allow time for movement
+            time.sleep(0.1)
+
+        # If we got here, the correction timed out
+        self.logger.warn("Odometry correction timed out, proceeding to teleport anyway")
+        self.direct_teleport()  # Use direct teleport instead of subprocess
 
     def get_current_yaw(self):
         """Extract yaw angle from quaternion orientation"""
-        # Use the odometry data provided by the environment node
         if self.env.current_odom is None:
             return 0.0
 
-        # Calculate orientation from quaternion
+        # Get quaternion components
         qx = self.env.current_odom.pose.pose.orientation.x
         qy = self.env.current_odom.pose.pose.orientation.y
         qz = self.env.current_odom.pose.pose.orientation.z
         qw = self.env.current_odom.pose.pose.orientation.w
 
-        # Convert to Euler angles - yaw (around z-axis)
+        # Convert to yaw angle
         siny_cosp = 2.0 * (qw * qz + qx * qy)
         cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
         yaw = math.atan2(siny_cosp, cosy_cosp)
 
         return yaw
 
-    def correction_control_loop(self):
-        """Control loop to drive robot back to zero position and yaw"""
-        # Check for timeout
-        if time.time() > self.correction_timeout:
-            self.timer_callback('correction_timeout')
-            return
-
-        # Use the odometry data provided by the environment node
-        if self.env.current_odom is None:
-            self.logger.warn("No odometry data received yet for correction loop.")
-            return
-
-        # Get current position and yaw from odometry
-        current_x = self.env.current_odom.pose.pose.position.x
-        current_y = self.env.current_odom.pose.pose.position.y
-        current_yaw = self.get_current_yaw()
-
-        # Create command
-        cmd = Twist()
-
-        if self.correction_phase == 'position':
-            # Calculate distance to origin
-            distance = math.sqrt(current_x ** 2 + current_y ** 2)
-
-            # If we're close enough to the origin, move to yaw correction phase
-            if distance < 0.05: # Threshold for position
-                self.logger.info(f"Reached origin position: ({current_x:.3f}, {current_y:.3f})")
-
-                # Switch to yaw correction phase
-                self.correction_phase = 'yaw'
-
-                # Stop the robot before yaw correction
-                stop_cmd = Twist()
-                self.env.cmd_vel_pub.publish(stop_cmd)
-                time.sleep(0.5) # Small delay
-
-                # Reset the correction timeout for the yaw phase
-                self.correction_timeout = time.time() + 15.0  # 15 seconds for yaw correction
-
-                return # Exit this iteration to allow the sleep and phase switch
-
-            # Calculate angle to origin
-            angle_to_origin = math.atan2(-current_y, -current_x)
-
-            # Calculate angular difference
-            angle_diff = angle_to_origin - current_yaw
-
-            # Normalize to [-pi, pi]
-            while angle_diff > math.pi:
-                angle_diff -= 2 * math.pi
-            while angle_diff < -math.pi:
-                angle_diff += 2 * math.pi
-
-            # First focus on turning to face the target
-            # Only start moving forward when the robot is approximately facing the target
-            if abs(angle_diff) > 0.2:  # About 11.5 degrees threshold for turning
-                # Only turn, no forward movement
-                cmd.linear.x = 0.0
-                cmd.angular.z = angle_diff * 0.5  # Proportional control for turning
-
-                # Limit angular velocity for turning in place
-                if abs(cmd.angular.z) > 0.5:
-                    cmd.angular.z = 0.5 if cmd.angular.z > 0 else -0.5
-            else:
-                # Now that we're facing the target, move forward
-                linear_speed = 0.5 * distance  # Proportional control for linear speed
-                 # Limit linear speed
-                if abs(linear_speed) > 0.5:
-                     linear_speed = 0.5 if linear_speed > 0 else -0.5
-                cmd.linear.x = linear_speed
-
-                # Still apply minor angular corrections while moving
-                cmd.angular.z = angle_diff * 0.5
-                # Limit angular velocity
-                if abs(cmd.angular.z) > 0.5:
-                    cmd.angular.z = 0.5 if cmd.angular.z > 0 else -0.5
-
-        elif self.correction_phase == 'yaw':
-            # Yaw correction phase - rotate to yaw=0
-
-            # If we're close enough to zero yaw, stop
-            if abs(current_yaw) < 0.02: # Threshold for yaw
-                self.logger.info(f"Reached target yaw: {current_yaw:.3f}")
-
-                # Stop the robot
-                stop_cmd = Twist()
-                self.env.cmd_vel_pub.publish(stop_cmd)
-
-                # Cancel the timer, odom correction is complete
-                self.control_timer.cancel()
-                self.control_timer = None
-
-                # Once odom is corrected, trigger teleportation
-                self.teleport_robot()
-                return # Exit this iteration
-
-            # Set only angular velocity for pure rotation
-            cmd.linear.x = 0.0
-            cmd.angular.z = -current_yaw * 0.5  # Proportional control for yaw
-
-            # Limit angular velocity
-            if abs(cmd.angular.z) > 0.3:
-                cmd.angular.z = 0.3 if cmd.angular.z > 0 else -0.3
-
-        # Publish command if correction is still ongoing
-        self.env.cmd_vel_pub.publish(cmd)
-
-    def timer_callback(self, action_type):
-        """Callback for various timers"""
-        if action_type == 'correction_timeout':
-            # Handle timeout in correction loop
-            self.logger.warn("Odom correction timeout reached, proceeding to trigger teleport anyway")
-
-            # Cancel the control timer
-            if self.control_timer:
-                self.control_timer.cancel()
-                self.control_timer = None
-
-            # Even if correction fails, still attempt to trigger teleport
-            self.teleport_robot()
-
     def get_target_position(self):
-        """Get the target position and orientation for teleportation"""
-        # Choose a random yaw angle from the predefined set
+        """Get target position and yaw for teleportation"""
+        # Random yaw angle
         yaw = random.choice([0.0, math.pi / 2, math.pi, math.pi * 3 / 2])
 
         if self.target_spawn_position is not None:
@@ -348,85 +252,116 @@ class SimulationResetHandler:
             chosen_position = random.choice(self.positions)
             return [chosen_position[0], chosen_position[1], yaw]
 
-
-    def teleport_robot(self):
-        """Publish a String message to trigger teleportation by a separate node."""
-        # Get target x, y coordinates and yaw
+    def direct_teleport(self):
+        """
+        Teleport the robot by publishing a teleport command to the teleport service.
+        """
+        # Get target position and orientation
         target_x, target_y, yaw = self.get_target_position()
-        self.logger.info(f"Publishing teleport command to: ({target_x}, {target_y}) with yaw {yaw} as String")
 
-        # Create and populate the String message with pose data
-        teleport_data_str = f"{target_x},{target_y},{yaw}"
-        teleport_msg = String()
-        teleport_msg.data = teleport_data_str
+        # Log the teleport
+        print(f"Publishing teleport command to: ({target_x}, {target_y}, {yaw})")
 
-        for _ in range(0, 3):
-            self.teleport_pub.publish(teleport_msg)
-            # Add a small sleep between publishes if needed, but be mindful of blocking
-            time.sleep(0.1)
+        # Create the teleport command string
+        teleport_cmd = f"{target_x},{target_y},{yaw}"
 
-        self.logger.info("Teleport command (String) published. Waiting for teleport service to act.")
+        # Create the message
+        msg = String()
+        msg.data = teleport_cmd
 
-        time.sleep(2.0)
+        # Publish the command to the teleport service
+        self.env.teleport_pub.publish(msg)
 
-        self.reset_slam_and_finalize()
+        # Wait for the teleport to complete
+        time.sleep(3.0)
+
+        # Reset SLAM map
+        self.reset_slam_map()
 
     def reset_slam_map(self):
-        """Reset the SLAM map using the slam_toolbox reset service."""
-        # Wait for the service to be available just before calling it.
-        self.logger.info("Waiting for SLAM reset service...")
-        # Increased timeout to 5 seconds (adjust as needed)
-        service_wait_timeout = 5.0
-        if not self.clear_slam_map_client.wait_for_service(timeout_sec=service_wait_timeout):
-             self.logger.warn(f"SLAM reset service not available after waiting {service_wait_timeout} seconds. Cannot reset map.")
-             return False
+        """Reset the SLAM map with timeout protection"""
+        try:
+            self.logger.info("Attempting to reset SLAM map")
 
-        self.logger.info("SLAM reset service is available. Proceeding with reset.")
+            # Wait for service with timeout
+            if not self.clear_slam_map_client.wait_for_service(timeout_sec=2.0):
+                self.logger.warn("SLAM reset service not available, continuing")
+                return False
 
-        req = Reset.Request()
-        future = self.clear_slam_map_client.call_async(req)
+            # Call service with timeout
+            req = Reset.Request()
+            future = self.clear_slam_map_client.call_async(req)
 
-        rclpy.spin_until_future_complete(self.env, future, timeout_sec=5.0)
+            # Use a timeout to prevent blocking
+            timeout_sec = 3.0
+            start_time = time.time()
+            while (time.time() - start_time) < timeout_sec:
+                if future.done():
+                    if future.exception() is not None:
+                        self.logger.warn(f"SLAM reset service call failed: {future.exception()}")
+                        return False
+                    else:
+                        self.logger.info("SLAM map reset successful")
+                        return True
+                time.sleep(0.1)  # Small sleep to avoid tight loop
+                rclpy.spin_once(self.env, timeout_sec=0.05)
 
-        if future.result() is not None:
-            self.logger.info("SLAM map reset via service call succeeded")
-            return True
-        else:
-            self.logger.error("Failed to reset SLAM map via service call")
+            # If we get here, the service call timed out
+            self.logger.warn(f"SLAM reset service call timed out after {timeout_sec}s")
             return False
 
-    def reset_slam_and_finalize(self):
-        """Reset SLAM map and finalize the reset process after teleportation trigger."""
-        # Reset the SLAM map after the teleport command is published.
-        # Add a small delay to allow the teleport service node to potentially act
-        # and for Gazebo physics to start settling.
-        time.sleep(1.0)
+        except Exception as e:
+            self.logger.error(f"Error in SLAM map reset: {e}")
+            return False
 
-        self.logger.info("Teleport command sent. Now resetting SLAM map...")
-        map_reset = self.reset_slam_map()
-        # Add a delay after SLAM reset for it to take effect
-        time.sleep(2.0)
+    def reset_environment(self):
+        """Public method to manually trigger a reset"""
+        # This will be called by the DQLEnv.reset() method
 
-        # After SLAM reset, finalize the process
-        self.finalize_reset()
+        # Thread-safe check and set for reset state
+        with self._reset_lock:
+            # If already resetting, just wait
+            if self._is_resetting:
+                self.logger.warn("Reset already in progress, waiting for completion")
+                should_start_new_thread = False
+            else:
+                self._is_resetting = True
+                should_start_new_thread = True
 
-    def finalize_reset(self):
-        """Finalize the reset process after position correction and SLAM reset."""
+                # Clean up any old thread reference
+                if self._reset_thread is not None and self._reset_thread.is_alive():
+                    self.logger.warn("Old reset thread is still alive, this shouldn't happen")
+                    # We won't join it as that would block, but we'll create a new one
 
-        self.logger.info("Reset process completed")
-        self.is_resetting = False # Reset the flag
+        # If we should start a new thread, do so
+        if should_start_new_thread:
+            # Create and start the thread
+            self._reset_thread = threading.Thread(target=self.reset_environment_thread_func)
+            self._reset_thread.daemon = True
+            self._reset_thread.start()
 
+        # Wait for reset to complete or timeout
+        max_wait = 10.0  # seconds
+        start_wait = time.time()
+
+        # We'll return after waiting at least 7 seconds or when reset completes
+        min_wait = 7.0  # seconds to allow teleport and SLAM reset
+
+        while time.time() - start_wait < max_wait and self.is_reset_in_progress():
+            time.sleep(0.1)
+            # Don't check too frequently to avoid a tight loop
+
+            # If we've waited at least the minimum time, we can return
+            if time.time() - start_wait >= min_wait:
+                break
+
+        # If we're still resetting after max wait, log it but continue anyway
+        if self.is_reset_in_progress():
+            self.logger.warn(f"Reset still in progress after {max_wait}s, but returning to allow training to continue")
+
+        return True
 
     def is_reset_in_progress(self):
-        """Check if a reset is currently in progress"""
-        return self.is_resetting
-
-    def shutdown_hook(self):
-        """Clean up resources when the handler is shutting down."""
-        self.logger.info("Shutting down SimulationResetHandler")
-        # Cancel all timers managed by the handler
-        if self.control_timer:
-            self.control_timer.cancel()
-        # Note: rclpy doesn't provide a direct way to cancel async futures easily
-        # Ensure is_resetting is false on shutdown
-        self.is_resetting = False
+        """Thread-safe check if reset is in progress"""
+        with self._reset_lock:
+            return self._is_resetting

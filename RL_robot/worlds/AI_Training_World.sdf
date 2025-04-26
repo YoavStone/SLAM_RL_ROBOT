@@ -266,7 +266,7 @@
           <geometry><box><size>0.3 2 1</size></box></geometry>
         </collision>
         <visual name="box_visual">
-          <geometry><box><size>0.3 3 1</size></box></geometry>
+          <geometry><box><size>0.3 2 1</size></box></geometry>
           <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse><specular>0.1 0.1 0.1 1</specular></material>
         </visual>
       </link>

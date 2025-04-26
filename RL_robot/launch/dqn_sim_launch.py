@@ -89,7 +89,7 @@ def generate_launch_description():
         name='teleport_service',
         output='screen',
         parameters=[
-            {'model_name': 'mapping_robot'} # Example parameter if needed
+            {'model_name': 'mapping_robot'}
         ]
     )
 
