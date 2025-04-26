@@ -152,14 +152,15 @@ class RewardCalculator:
             )
 
             # Only reward significant movement (prevents micro-movements)
-            if distance_moved > (self.linear_speed-0.05) * dt:  # threshold
+            if distance_moved > (self.linear_speed-0.03) * dt:  # threshold
                 movement_reward = MOVEMENT_REWARD * (distance_moved * 100) * dt
                 reward += movement_reward
                 # Store for visualization
-                self.last_movement_reward = movement_reward
 
         # Store current position for next comparison
         self.last_position = odom_pos.copy()
+
+        self.last_movement_reward = reward
 
         return reward
 
