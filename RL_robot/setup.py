@@ -69,8 +69,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'asymmetric_velocity_controller = sim_control.asymmetric_velocity_controller:main',
-            'teleport_service = sim_control.teleport_service:main',
+            'velocity_middleware = sim_control.launch_vel_middleware:main',
+            'teleport_service = sim_control.TeleportService:main',
 
             'control_motors = RL_robot.command_robot:main',
 

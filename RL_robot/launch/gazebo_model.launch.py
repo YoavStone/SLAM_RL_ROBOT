@@ -111,8 +111,8 @@ def generate_launch_description():
 
     sim_vel_control_node = Node(
         package='RL_robot',
-        executable='asymmetric_velocity_controller',
-        name='asymmetric_velocity_controller',
+        executable='velocity_middleware',
+        name='velocity_middleware',
         output='screen',
         # Optional: Add parameters if you want to configure values from launch file
         parameters=[{

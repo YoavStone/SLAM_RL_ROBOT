@@ -1,18 +1,14 @@
-#!/usr/bin/env python3
-
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
-import numpy as np
-import time
 
 
 ANGULAR_SPEED_FACTOR = 1.5
 
 
-class AsymmetricVelocityController(Node):
+class VelocityMiddleware(Node):
     def __init__(self):
-        super().__init__('asymmetric_velocity_controller')
+        super().__init__('velocity_middleware')
 
         # Declare parameters with default values
         self.declare_parameter('max_linear_accel', 1.5)
@@ -134,20 +130,3 @@ class AsymmetricVelocityController(Node):
         cmd.angular.z = self.current_angular_vel
 
         self.cmd_vel_pub.publish(cmd)
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    controller = AsymmetricVelocityController()
-
-    try:
-        rclpy.spin(controller)
-    except KeyboardInterrupt:
-        pass
-
-    controller.destroy_node()
-    rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
