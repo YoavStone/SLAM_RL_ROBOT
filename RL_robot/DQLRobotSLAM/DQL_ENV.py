@@ -56,7 +56,7 @@ class GazeboEnv(Node):
 
         # cropped map visualizer
         print("Creating visualization node...")
-        self.vis_node = MapVisualizationNode(publish=True)
+        self.vis_node = MapVisualizationNode(publish=False)
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
