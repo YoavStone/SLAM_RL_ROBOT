@@ -1,4 +1,3 @@
-import itertools
 import random
 from collections import deque
 import torch
@@ -141,7 +140,7 @@ class DQLAgent(Node):
         self.episode_count = 0  # Start counting episodes from 0
 
         self.get_logger().info(
-            f"🚀 DQL Agent initialized successfully in {'LEARNING' if self.learning_mode else 'EXECUTION'} mode.")
+            f"DQL Agent initialized successfully in {'LEARNING' if self.learning_mode else 'EXECUTION'} mode.")
         if self.learning_mode and len(self.replay_buffer) < MIN_REPLAY_SIZE:
             self.get_logger().info("Initializing replay buffer...")
             # Start buffer initialization immediately if in learning mode

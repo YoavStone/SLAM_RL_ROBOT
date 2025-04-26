@@ -9,7 +9,7 @@ import math
 from gymnasium import spaces
 
 from .RewardCalculator import RewardCalculator
-from .cropped_map_visualizer import MapVisualizationNode
+from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s

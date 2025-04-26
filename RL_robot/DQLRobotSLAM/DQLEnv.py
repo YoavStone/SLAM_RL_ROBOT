@@ -4,7 +4,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 import time
 
-from sim_control.sim_reset_handler import SimulationResetHandler
+from sim_control.SimulationResetHandler import SimulationResetHandler
 from .GazeboEnv import GazeboEnv
 
 

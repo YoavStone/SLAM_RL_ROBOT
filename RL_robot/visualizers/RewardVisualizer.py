@@ -1,7 +1,6 @@
 import rclpy
 from rclpy.node import Node
 from collections import deque
-import time
 
 
 class RewardVisualizer(Node):

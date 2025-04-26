@@ -50,6 +50,10 @@ setup(
             'share', package_name, 'CartPoleExample/'),
          glob(os.path.join('CartPoleExample/*'))),
 
+        (os.path.join(
+            'share', package_name, 'visualizers/'),
+         glob(os.path.join('visualizers/*'))),
+
         (os.path.join('share', package_name, 'worlds'),
          glob(os.path.join('worlds/*'))),
         # All subfolders of models (e.g., models/room_walls/*)

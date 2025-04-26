@@ -2,7 +2,7 @@ import numpy as np
 import time
 import math
 
-from .reward_visualizer import RewardVisualizer
+from visualizers.RewardVisualizer import RewardVisualizer
 
 
 # Constants
