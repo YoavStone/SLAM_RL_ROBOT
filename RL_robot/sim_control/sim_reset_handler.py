@@ -197,7 +197,10 @@ class SimulationResetHandler:
                         cmd.angular.z = 0.5 if cmd.angular.z > 0 else -0.5
                 else:
                     # Now that we're facing the target, move forward
-                    linear_speed = 0.8 * distance
+                    linear_speed = 0.5 * distance
+                    # Limit linear speed
+                    if abs(linear_speed) > 0.6:
+                        linear_speed = 0.6 if linear_speed > 0 else -0.6
                     cmd.linear.x = linear_speed
 
                     # Still apply minor angular corrections
