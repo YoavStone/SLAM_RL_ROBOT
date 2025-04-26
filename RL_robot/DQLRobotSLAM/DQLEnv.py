@@ -74,7 +74,8 @@ class DQLEnv:
             self.gazebo_env.measured_distance_to_walls,
             self.gazebo_env.map_processed,
             self.gazebo_env.grid_position,
-            self.gazebo_env.pos
+            self.gazebo_env.pos,
+            action
         )
 
         # Track episode reward

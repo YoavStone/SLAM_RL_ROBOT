@@ -14,6 +14,7 @@ EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
 MOVEMENT_REWARD = 0.9  # reward for moving beyond a threshold (so it wont stay in place)
 REVISIT_PENALTY = -0.2  # punishment for revisiting a cell in the map
 REMEMBER_VISIT_TIME = 1.5  # how long to keep the visit time of a spot so it counts as visited in seconds
+GO_BACK_PUNISH = -0.6  # punishment for going backwards
 
 
 class RewardCalculator:
@@ -135,9 +136,12 @@ class RewardCalculator:
 
         return penalty
 
-    def movement_to_reward(self, dt, odom_pos):
+    def movement_to_reward(self, dt, odom_pos, action):
         """Calculate reward based on distance traveled since last update"""
         reward = 0
+
+        if action == 1:  # going backwards
+            reward += (GO_BACK_PUNISH * dt)
 
         if self.last_position is not None:
             # Calculate distance moved
@@ -303,7 +307,7 @@ class RewardCalculator:
 
         return False
 
-    def calc_reward(self, time_from_last_env_update, new_dis, new_map, grid_position, odom_pos):
+    def calc_reward(self, time_from_last_env_update, new_dis, new_map, grid_position, odom_pos, action):
         """Calculate reward based on time spent, proximity to walls, and exploration"""
         # Time-based continuous punishment
         cont = CONTINUES_PUNISHMENT * time_from_last_env_update
@@ -319,7 +323,7 @@ class RewardCalculator:
         reward += exploration_reward
 
         # Reward for moving to not stay in place
-        movement_reward = self.movement_to_reward(time_from_last_env_update, odom_pos)
+        movement_reward = self.movement_to_reward(time_from_last_env_update, odom_pos, action)
         reward += movement_reward
 
         # Add penalty for revisiting cells
