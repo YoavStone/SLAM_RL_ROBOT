@@ -90,8 +90,8 @@ class RobotPositionCalculator:
         odom.twist.twist.linear.x = linear_velocity
         odom.twist.twist.angular.z = angular_velocity
 
-        if abs(delta_right) > 0 or abs(delta_left) > 0:
-            print(f'Position: ({self.x:.3f}, {self.y:.3f}, {self.theta:.3f}), R: {right_pos}, L: {left_pos}')
+        # if abs(delta_right) > 0 or abs(delta_left) > 0:
+        #     print(f'Position: ({self.x:.3f}, {self.y:.3f}, {self.theta:.3f}), R: {right_pos}, L: {left_pos}')
 
         # return the message
         return odom

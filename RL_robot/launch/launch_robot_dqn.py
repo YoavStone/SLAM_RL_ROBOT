@@ -27,7 +27,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {
-                'learning_mode': 'false',  # Always false - just run the model
+                'learning_mode': 'False',  # Always false - just run the model
                 'model_path': model_path,
                 # Fixed values for other parameters that were previously configurable
                 'epsilon_start': 0.0,  # No exploration during inference

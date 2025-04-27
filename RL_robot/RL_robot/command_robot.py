@@ -32,8 +32,8 @@ class BaseToRobot(Node):
             10)
 
         # Set default velocities
-        self.linear_speed = 0.4  # m/s
-        self.angular_speed = 0.4  # rad/s
+        self.linear_speed = 0.3  # m/s
+        self.angular_speed = 0.3  # rad/s
 
         # Store latest position and orientation
         self.current_x = 0.0
@@ -84,6 +84,8 @@ class BaseToRobot(Node):
         qz = msg.pose.pose.orientation.z
         qw = msg.pose.pose.orientation.w
         new_theta = 2 * math.atan2(qz, qw)
+        linear_velocity = msg.twist.twist.linear.x
+        angular_velocity = msg.twist.twist.angular.z
 
         # Check if position or orientation has changed significantly
         position_change = math.sqrt((new_x - self.current_x)**2 + (new_y - self.current_y)**2)
@@ -95,11 +97,13 @@ class BaseToRobot(Node):
             # Print updated odometry
             print(f'Position: ({new_x:.3f}, {new_y:.3f})')
             print(f'Orientation: {math.degrees(new_theta):.1f} degrees')
+            print(f'vel: {linear_velocity:.3f} m/s, {angular_velocity:.3f} rad/s')
 
             # Update stored values
             self.current_x = new_x
             self.current_y = new_y
             self.current_theta = new_theta
+
     def read_keyboard_input(self):
         # Save terminal settings
         old_settings = termios.tcgetattr(sys.stdin)
