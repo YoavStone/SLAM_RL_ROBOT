@@ -1,3 +1,5 @@
+import math
+
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
@@ -77,7 +79,7 @@ class VelocityToMotorsCmdConvertor:
         # Convert to angular velocity (rad/s)
         # The sign will correctly indicate direction:
         # positive for forward, negative for backward
-        right_wheel_speed = v_right / self.wheel_radius
-        left_wheel_speed = v_left / self.wheel_radius
+        right_wheel_speed = v_right * 2 * math.pi
+        left_wheel_speed = v_left * 2 * math.pi
 
         return right_wheel_speed, left_wheel_speed
