@@ -66,7 +66,7 @@ class RobotControlNode(Node):
         self.last_time = time.time()
 
         self.robot_position_calculator = RobotPositionCalculator(self.motors_synchronizer, self.wheel_radius, self.wheel_separation, self.ticks_per_revolution)
-        self.vel_to_motors_cmd_convertor = VelocityToMotorsCmdConvertor(self.motors_synchronizer, self.motor_controller, self.wheel_radius, self.wheel_separation)
+        self.vel_to_motors_cmd_convertor = VelocityToMotorsCmdConvertor(self.motors_synchronizer, self.motor_controller, self.wheel_separation, self.wheel_radius)
 
         # Set up timer for regular position updates
         self.publisher_timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate

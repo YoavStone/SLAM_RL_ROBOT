@@ -64,6 +64,8 @@ class MotorsController:
 
     def closed_loop_control_speed(self):
 
+        self.get_motors_speeds()
+
         if self.r_motor_desired_speed == 0.0 == self.l_motor_desired_speed:
             return
 
