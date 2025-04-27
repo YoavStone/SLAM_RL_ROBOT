@@ -6,7 +6,6 @@ from .MotorsSynchronizer import MotorsSynchronizer
 
 class MotorsController:
     def __init__(self, motors_synchronizer, ticks_per_revolution):
-
         self.motors_synchronizer = motors_synchronizer
 
         self.last_right_pos = 0.0
@@ -18,12 +17,11 @@ class MotorsController:
         self.r_motor_desired_speed = 0.0
         self.l_motor_desired_speed = 0.0
 
-        # Reduced from 0.55 to avoid over-correction at high speeds
+        # Use a single correction factor for simplicity and consistency
         self.pwm_change_factor = 0.3
 
         self.max_speed = 0.8
-        # Minimum PWM to overcome static friction
-        self.min_speed = 0.1
+        self.min_speed = 0.15  # Slightly increased for better starting torque
 
         self.ticks_per_revolution = ticks_per_revolution
 
@@ -31,6 +29,10 @@ class MotorsController:
 
         # Add speed filtering to reduce noise
         self.filter_alpha = 0.7  # 0-1, higher = more weight to new readings
+
+        # Add calibration for speed-to-PWM relationship
+        # This helps address motor asymmetry without direction-specific parameters
+        self.speed_calibration = 0.05  # Experimental value - adjust based on testing
 
     def get_motors_speeds(self):
         """
@@ -64,78 +66,74 @@ class MotorsController:
         new_right_speed = (delta_right / self.ticks_per_revolution) * 2 * math.pi / dt
         new_left_speed = (delta_left / self.ticks_per_revolution) * 2 * math.pi / dt
 
-        # Apply low-pass filter to smooth speed readings (especially important at high speeds)
+        # Apply low-pass filter to smooth speed readings
         self.right_wheel_speed = self.filter_alpha * new_right_speed + (1 - self.filter_alpha) * self.right_wheel_speed
         self.left_wheel_speed = self.filter_alpha * new_left_speed + (1 - self.filter_alpha) * self.left_wheel_speed
 
         return self.right_wheel_speed, self.left_wheel_speed
 
     def closed_loop_control_speed(self):
-
         self.get_motors_speeds()
 
         # If both motors should be stopped, just set PWM to 0
-        if self.r_motor_desired_speed == 0.0 and self.l_motor_desired_speed == 0.0:
+        if abs(self.r_motor_desired_speed) < 0.01 and abs(self.l_motor_desired_speed) < 0.01:
             self.motors_synchronizer.set_pwm(0.0, 0.0)
             return
 
-        # Calculate speed differences
-        dt_speeds_r = self.r_motor_desired_speed - self.right_wheel_speed
-        dt_speeds_l = self.l_motor_desired_speed - self.left_wheel_speed
+        # Get current speeds (we'll work with absolute values and apply direction later)
+        abs_right_speed = abs(self.right_wheel_speed)
+        abs_left_speed = abs(self.left_wheel_speed)
 
-        # Get current PWM values
-        pwm_r = self.motors_synchronizer.R_Motor.pwm
-        pwm_l = self.motors_synchronizer.L_Motor.pwm
+        # Get target speeds
+        abs_right_target = abs(self.r_motor_desired_speed)
+        abs_left_target = abs(self.l_motor_desired_speed)
 
-        # Calculate relative error only if desired speed is significant
-        if abs(self.r_motor_desired_speed) > 0.05:
-            error_speed_r = dt_speeds_r / abs(self.r_motor_desired_speed)
-        else:
-            error_speed_r = 0
+        # Calculate speed differences (target - actual)
+        speed_diff_r = abs_right_target - abs_right_speed
+        speed_diff_l = abs_left_target - abs_left_speed
 
-        if abs(self.l_motor_desired_speed) > 0.05:
-            error_speed_l = dt_speeds_l / abs(self.l_motor_desired_speed)
-        else:
-            error_speed_l = 0
+        # Calculate proportional error term
+        # This uses actual speed difference rather than a relative percentage
+        # This approach is more consistent across different speeds
+        error_r = speed_diff_r * self.pwm_change_factor
+        error_l = speed_diff_l * self.pwm_change_factor
 
-        # Calculate PWM adjustment, but with rate limiting for high speeds
-        if pwm_r != 0.0 and pwm_l != 0.0:
-            # Limit error correction at high speeds
-            max_correction = 0.1  # Maximum allowed correction per cycle
+        # Get current PWM values (absolute)
+        current_pwm_r = abs(self.motors_synchronizer.R_Motor.pwm)
+        current_pwm_l = abs(self.motors_synchronizer.L_Motor.pwm)
 
-            error_pwm_r = pwm_r * error_speed_r * self.pwm_change_factor
-            error_pwm_l = pwm_l * error_speed_l * self.pwm_change_factor
+        # If PWM is very low, use a starting value based on desired speed
+        if current_pwm_r < 0.05:
+            # Base initial PWM on desired speed with a minimum value
+            current_pwm_r = max(self.min_speed, abs_right_target * self.speed_calibration)
 
-            # Limit correction to prevent oscillations
-            error_pwm_r = max(-max_correction, min(error_pwm_r, max_correction))
-            error_pwm_l = max(-max_correction, min(error_pwm_l, max_correction))
-        else:
-            # Initial PWM values if current PWM is zero
-            error_pwm_r = 0.15 * error_speed_r * self.pwm_change_factor
-            error_pwm_l = 0.15 * error_speed_l * self.pwm_change_factor
+        if current_pwm_l < 0.05:
+            # Base initial PWM on desired speed with a minimum value
+            current_pwm_l = max(self.min_speed, abs_left_target * self.speed_calibration)
 
-        # Determine sign to preserve direction
-        r_sign = 1 if self.r_motor_desired_speed >= 0 else -1
-        l_sign = 1 if self.l_motor_desired_speed >= 0 else -1
+        # Limit maximum change per cycle to prevent oscillations
+        max_change = 0.1
+        error_r = max(-max_change, min(error_r, max_change))
+        error_l = max(-max_change, min(error_l, max_change))
 
-        # Calculate new PWM values (absolute)
-        new_pwm_r_abs = abs(pwm_r + error_pwm_r)
-        new_pwm_l_abs = abs(pwm_l + error_pwm_l)
+        # Calculate new PWM values
+        new_pwm_r = current_pwm_r + error_r
+        new_pwm_l = current_pwm_l + error_l
 
-        # Apply minimum PWM to overcome friction if motors should be moving
-        if abs(self.r_motor_desired_speed) > 0.05:
-            new_pwm_r_abs = max(self.min_speed, new_pwm_r_abs)
+        # Apply minimum PWM if motors should be moving
+        if abs_right_target > 0.05:
+            new_pwm_r = max(self.min_speed, new_pwm_r)
 
-        if abs(self.l_motor_desired_speed) > 0.05:
-            new_pwm_l_abs = max(self.min_speed, new_pwm_l_abs)
+        if abs_left_target > 0.05:
+            new_pwm_l = max(self.min_speed, new_pwm_l)
 
-        # Apply maximum speed limit
-        new_pwm_r_abs = min(self.max_speed, new_pwm_r_abs)
-        new_pwm_l_abs = min(self.max_speed, new_pwm_l_abs)
+        # Apply maximum limit
+        new_pwm_r = min(self.max_speed, new_pwm_r)
+        new_pwm_l = min(self.max_speed, new_pwm_l)
 
-        # Apply sign to maintain direction
-        new_pwm_r = new_pwm_r_abs * r_sign
-        new_pwm_l = new_pwm_l_abs * l_sign
+        # Apply direction
+        r_dir = 1 if self.r_motor_desired_speed >= 0 else -1
+        l_dir = 1 if self.l_motor_desired_speed >= 0 else -1
 
-        # Set new PWM values
-        self.motors_synchronizer.set_pwm(new_pwm_r, new_pwm_l)
+        # Set final PWM values
+        self.motors_synchronizer.set_pwm(new_pwm_r * r_dir, new_pwm_l * l_dir)
