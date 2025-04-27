@@ -34,8 +34,8 @@ class MotorsSynchronizer:
         self.L_Motor.backwards()
 
     def set_pwm(self, right_pwm, left_pwm):
-        right_pwm = min(right_pwm, 1.0)
-        left_pwm = min(left_pwm, 1.0)
+        right_pwm = min(abs(right_pwm), 1.0)
+        left_pwm = min(abs(left_pwm), 1.0)
         self.R_Motor.change_pwm(right_pwm)
         self.L_Motor.change_pwm(left_pwm)
 

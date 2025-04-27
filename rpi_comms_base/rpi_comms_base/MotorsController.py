@@ -19,10 +19,10 @@ class MotorsController:
         self.l_motor_desired_speed = 0.0
 
         # Use a single correction factor for simplicity and consistency
-        self.pwm_change_factor = 0.3
+        self.pwm_change_factor = 0.5
 
         self.max_speed = 0.8
-        self.min_speed = 0.15  # not 0 for better starting torque
+        self.min_speed = 0.3  # not 0 for better starting torque
 
         self.ticks_per_revolution = ticks_per_revolution
 
@@ -70,8 +70,9 @@ class MotorsController:
         self.get_motors_speeds()
 
         # If both motors should be stopped, just set PWM to 0
-        if abs(self.r_motor_desired_speed) < 0.01 and abs(self.l_motor_desired_speed) < 0.01:
+        if abs(self.r_motor_desired_speed) < 0.05 and abs(self.l_motor_desired_speed) < 0.05:
             self.motors_synchronizer.set_pwm(0.0, 0.0)
+            self.motors_synchronizer.stop()
             return
 
         # Get current speeds (we'll work with absolute values and apply direction later)
