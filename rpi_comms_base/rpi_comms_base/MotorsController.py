@@ -21,7 +21,7 @@ class MotorsController:
         self.pwm_change_factor = 0.3
 
         self.max_speed = 0.8
-        self.min_speed = 0.15  # Slightly increased for better starting torque
+        self.min_speed = 0.2  # not 0 for better starting torque
 
         self.ticks_per_revolution = ticks_per_revolution
 
@@ -131,9 +131,5 @@ class MotorsController:
         new_pwm_r = min(self.max_speed, new_pwm_r)
         new_pwm_l = min(self.max_speed, new_pwm_l)
 
-        # Apply direction
-        r_dir = 1 if self.r_motor_desired_speed >= 0 else -1
-        l_dir = 1 if self.l_motor_desired_speed >= 0 else -1
-
         # Set final PWM values
-        self.motors_synchronizer.set_pwm(new_pwm_r * r_dir, new_pwm_l * l_dir)
+        self.motors_synchronizer.set_pwm(new_pwm_r, new_pwm_l)
