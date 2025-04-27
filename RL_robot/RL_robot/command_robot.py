@@ -151,6 +151,7 @@ class BaseToRobot(Node):
             # Quit the program
             print('Quitting')
             self.running = False
+            self.cmd_vel_publisher.publish(twist)
             rclpy.shutdown()
             return
 
