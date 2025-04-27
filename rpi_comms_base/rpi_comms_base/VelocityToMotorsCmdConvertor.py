@@ -76,10 +76,10 @@ class VelocityToMotorsCmdConvertor:
         v_right = linear_vel + (angular_vel * self.wheel_separation / 2)
         v_left = linear_vel - (angular_vel * self.wheel_separation / 2)
 
-        # Convert to angular velocity (rad/s)
+        # Convert to spins per sec
         # The sign will correctly indicate direction:
         # positive for forward, negative for backward
-        right_wheel_speed = v_right * 2 * math.pi
-        left_wheel_speed = v_left * 2 * math.pi
+        right_wheel_speed = v_right / (2 * math.pi * self.wheel_radius)
+        left_wheel_speed = v_left / (2 * math.pi * self.wheel_radius)
 
         return right_wheel_speed, left_wheel_speed

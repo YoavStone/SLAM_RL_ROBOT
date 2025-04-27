@@ -57,15 +57,17 @@ class MotorsController:
 
         self.last_time = time.time()
 
-        # Convert ticks to angular velocity (rad/s)
-        self.right_wheel_speed = (delta_right / self.ticks_per_revolution) * 2 * math.pi / dt
-        self.left_wheel_speed = (delta_left / self.ticks_per_revolution) * 2 * math.pi / dt
+        # Convert ticks to spins per sec
+        self.right_wheel_speed = (delta_right / self.ticks_per_revolution) / dt
+        self.left_wheel_speed = (delta_left / self.ticks_per_revolution) / dt
 
         return self.right_wheel_speed, self.left_wheel_speed
 
     def closed_loop_control_speed(self):
 
         self.get_motors_speeds()
+        print("real: ", self.right_wheel_speed)
+        print("des: ", self.r_motor_desired_speed)
 
         if self.r_motor_desired_speed <= 0.05 >= self.l_motor_desired_speed:
             self.motors_synchronizer.stop()
@@ -82,6 +84,9 @@ class MotorsController:
         error_speed_r = max(-1.0, min(error_speed_r, 1.0))
         error_speed_l = max(-1.0, min(error_speed_l, 1.0))
 
+        print("dt: ", dt_speeds_r)
+        print("err: ", error_speed_r)
+
         # Get current PWM values (absolute)
         pwm_r = abs(self.motors_synchronizer.R_Motor.pwm)
         pwm_l = abs(self.motors_synchronizer.L_Motor.pwm)
@@ -95,5 +100,8 @@ class MotorsController:
 
         new_pwm_r = min(self.max_speed, abs(pwm_r + error_pwm_r))
         new_pwm_l = min(self.max_speed, abs(pwm_l + error_pwm_l))
+
+        print("pwm: ", pwm_r)
+        print("new pwm: ", new_pwm_r)
 
         self.motors_synchronizer.set_pwm(new_pwm_r, new_pwm_l)
