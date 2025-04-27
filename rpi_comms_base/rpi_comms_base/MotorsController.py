@@ -18,7 +18,8 @@ class MotorsController:
         self.r_motor_desired_speed = 0.0
         self.l_motor_desired_speed = 0.0
 
-        self.pwm_change_factor = 0.15  # adjust how much the inaccuracy in the speed difference affects the pwm change
+        self.pwm_change_factor = 0.1  # adjust how much the inaccuracy in the speed difference affects the pwm change
+        self.start_from_stop = self.pwm_change_factor * 4.5
 
         self.max_speed = 0.8
 
@@ -101,14 +102,14 @@ class MotorsController:
             error_pwm_r = current_pwm_r * error_speed_r * self.pwm_change_factor
         else:
             # If PWM is essentially zero, start with minimum PWM
-            error_pwm_r = 1.0 * error_speed_r * self.pwm_change_factor * 2
+            error_pwm_r = 1.0 * error_speed_r * self.start_from_stop
 
 
         if current_pwm_l > 0.01:
             error_pwm_l = current_pwm_l * error_speed_l * self.pwm_change_factor
         else:
             # If PWM is essentially zero, start with minimum PWM
-            error_pwm_l = 1.0 * error_speed_l * self.pwm_change_factor * 2
+            error_pwm_l = 1.0 * error_speed_l * self.start_from_stop
 
         # Calculate new PWM values (always positive)
         new_pwm_r = current_pwm_r + error_pwm_r
