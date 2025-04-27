@@ -156,7 +156,13 @@ class DQLAgent(Node):
 
         init_steps = 0
         while len(self.replay_buffer) < MIN_REPLAY_SIZE:
-            action = self.env.action_space.sample()
+            epsilon = np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end])
+
+            if random.random() < epsilon:
+                action = self.env.action_space.sample()  # Explore
+            else:
+                action = self.q_network.act(self.current_obs)  # Exploit
+
             new_obs, reward, terminated, truncated, _ = self.env.step(action)
             is_done = terminated or truncated
 
@@ -364,14 +370,15 @@ class DQLAgent(Node):
         if self.episode_count <= SAVE_VIDEO_STEP_COUNT_THRESHOLD:
             return
 
-        try:
-            # Save Current Episode Model
-            episode_model_name = f"episode_{self.episode_count}_reward_{self.episode_reward:.2f}_dqn_model.pth"
-            episode_model_path = os.path.join(self.episode_model_dir, episode_model_name)
-            torch.save(self.q_network.state_dict(), episode_model_path)
-            self.get_logger().info(f"💾 Saved episode model to {episode_model_path}")
-        except Exception as e:
-            self.get_logger().error(f"🔥 Failed to save episode model: {e}")
+        if self.episode_count % 10 == 0:
+            try:
+                # Save Current Episode Model
+                episode_model_name = f"episode_{self.episode_count}_reward_{self.episode_reward:.2f}_dqn_model.pth"
+                episode_model_path = os.path.join(self.episode_model_dir, episode_model_name)
+                torch.save(self.q_network.state_dict(), episode_model_path)
+                self.get_logger().info(f"💾 Saved episode model to {episode_model_path}")
+            except Exception as e:
+                self.get_logger().error(f"🔥 Failed to save episode model: {e}")
 
         # Save Best Model if Current Episode is Better
         if self.episode_reward > self.best_episode_reward:

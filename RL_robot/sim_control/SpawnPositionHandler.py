@@ -9,7 +9,8 @@ class SpawnPositionHandler:
             [6.3, 0.0],
             [-6.3, 0.0],
             [0.0, 6.3],
-            [0.0, -6.3]
+            [0.0, -6.3],
+            [6.3, -6.3]
         ]
         try:
             x, y = staring_pos.split(',')
