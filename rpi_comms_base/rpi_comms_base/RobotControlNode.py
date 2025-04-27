@@ -46,7 +46,7 @@ class RobotControlNode(Node):
         # Initialize position publisher
         self.odom_publisher = self.create_publisher(
             Odometry,
-            'odom_robot',
+            'odom',
             10
         )
 

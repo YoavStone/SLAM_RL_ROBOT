@@ -27,7 +27,7 @@ class BaseToRobot(Node):
         # Create subscription for receiving odometry data
         self.odom_subscription = self.create_subscription(
             Odometry,
-            'odom_robot',
+            'odom',
             self.odom_callback,
             10)
 

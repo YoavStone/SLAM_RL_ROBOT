@@ -144,7 +144,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /odom_robot
+        Value: /odom
       Value: true
   Enabled: true
   Global Options:
