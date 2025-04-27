@@ -5,11 +5,9 @@ from .MotorsSynchronizer import MotorsSynchronizer
 
 
 class MotorsController:
-    def __init__(self, motors_synchronizer, ticks_per_revolution, wheel_radius):
+    def __init__(self, motors_synchronizer, ticks_per_revolution):
 
         self.motors_synchronizer = motors_synchronizer
-
-        self.wheel_radius = wheel_radius
 
         self.last_right_pos = 0.0
         self.last_left_pos = 0.0
@@ -20,10 +18,9 @@ class MotorsController:
         self.r_motor_desired_speed = 0.0
         self.l_motor_desired_speed = 0.0
 
-        self.pwm_change_factor = 0.3  # adjust how much the inaccuracy in the speed difference affects the pwm change
+        self.pwm_change_factor = 0.15  # adjust how much the inaccuracy in the speed difference affects the pwm change
 
         self.max_speed = 0.8
-        self.min_pwm = 0.15
 
         self.ticks_per_revolution = ticks_per_revolution
 
@@ -64,44 +61,62 @@ class MotorsController:
         return self.right_wheel_speed, self.left_wheel_speed
 
     def closed_loop_control_speed(self):
-
         self.get_motors_speeds()
-        print("real: ", self.right_wheel_speed)
-        print("des: ", self.r_motor_desired_speed)
 
-        if self.r_motor_desired_speed <= 0.05 >= self.l_motor_desired_speed:
+        # Get desired speeds (absolute values)
+        abs_target_r = abs(self.r_motor_desired_speed)
+        abs_target_l = abs(self.l_motor_desired_speed)
+
+        # If both motors should be stopped, just set PWM to 0
+        if abs_target_r <= 0.05 and abs_target_l <= 0.05:
             self.motors_synchronizer.stop()
             self.motors_synchronizer.set_pwm(0.0, 0.0)
             return
 
-        dt_speeds_r = self.r_motor_desired_speed - self.right_wheel_speed
-        dt_speeds_l = self.l_motor_desired_speed - self.left_wheel_speed
+        # Calculate speed differences and errors
+        dt_speeds_r = abs_target_r - abs(self.right_wheel_speed)
+        dt_speeds_l = abs_target_l - abs(self.left_wheel_speed)
 
-        error_speed_r = dt_speeds_r / self.r_motor_desired_speed
-        error_speed_l = dt_speeds_l / self.l_motor_desired_speed
+        # Calculate relative errors (protect against division by zero)
+        if abs_target_r > 0.05:
+            error_speed_r = dt_speeds_r / abs_target_r
+        else:
+            error_speed_r = 0.0
 
-        # make between -1 and 1
+        if abs_target_l > 0.05:
+            error_speed_l = dt_speeds_l / abs_target_l
+        else:
+            error_speed_l = 0.0
+
+        # Limit error to reasonable range
         error_speed_r = max(-1.0, min(error_speed_r, 1.0))
         error_speed_l = max(-1.0, min(error_speed_l, 1.0))
 
-        print("dt: ", dt_speeds_r)
-        print("err: ", error_speed_r)
+        # Get current PWM values (always positive)
+        current_pwm_r = abs(self.motors_synchronizer.R_Motor.pwm)
+        current_pwm_l = abs(self.motors_synchronizer.L_Motor.pwm)
 
-        # Get current PWM values (absolute)
-        pwm_r = abs(self.motors_synchronizer.R_Motor.pwm)
-        pwm_l = abs(self.motors_synchronizer.L_Motor.pwm)
-
-        if pwm_r != 0.0 != pwm_l:
-            error_pwm_r = pwm_r * error_speed_r * self.pwm_change_factor
-            error_pwm_l = pwm_l * error_speed_l * self.pwm_change_factor
+        # Calculate PWM adjustments
+        if current_pwm_r > 0.01:
+            error_pwm_r = current_pwm_r * error_speed_r * self.pwm_change_factor
         else:
-            error_pwm_r = 1.0 * error_speed_r * self.pwm_change_factor
-            error_pwm_l = 1.0 * error_speed_l * self.pwm_change_factor
+            # If PWM is essentially zero, start with minimum PWM
+            error_pwm_r = 1.0 * error_speed_r * self.pwm_change_factor * 2
 
-        new_pwm_r = min(self.max_speed, abs(pwm_r + error_pwm_r))
-        new_pwm_l = min(self.max_speed, abs(pwm_l + error_pwm_l))
 
-        print("pwm: ", pwm_r)
-        print("new pwm: ", new_pwm_r)
+        if current_pwm_l > 0.01:
+            error_pwm_l = current_pwm_l * error_speed_l * self.pwm_change_factor
+        else:
+            # If PWM is essentially zero, start with minimum PWM
+            error_pwm_l = 1.0 * error_speed_l * self.pwm_change_factor * 2
 
+        # Calculate new PWM values (always positive)
+        new_pwm_r = current_pwm_r + error_pwm_r
+        new_pwm_l = current_pwm_l + error_pwm_l
+
+        # Apply limits
+        new_pwm_r = min(self.max_speed, new_pwm_r)
+        new_pwm_l = min(self.max_speed, new_pwm_l)
+
+        # Set final PWM values (always positive)
         self.motors_synchronizer.set_pwm(new_pwm_r, new_pwm_l)
