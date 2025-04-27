@@ -5,8 +5,9 @@ from .MotorsSynchronizer import MotorsSynchronizer
 
 
 class MotorsController:
-    def __init__(self, motors_synchronizer, ticks_per_revolution):
+    def __init__(self, motors_synchronizer, ticks_per_revolution, wheel_radius):
         self.motors_synchronizer = motors_synchronizer
+        self.wheel_radius = wheel_radius
 
         self.last_right_pos = 0.0
         self.last_left_pos = 0.0
@@ -21,14 +22,11 @@ class MotorsController:
         self.pwm_change_factor = 0.3
 
         self.max_speed = 0.8
-        self.min_speed = 0.2  # not 0 for better starting torque
+        self.min_speed = 0.15  # not 0 for better starting torque
 
         self.ticks_per_revolution = ticks_per_revolution
 
         self.last_time = time.time()
-
-        # Add speed filtering to reduce noise
-        self.filter_alpha = 0.7  # 0-1, higher = more weight to new readings
 
         # Add calibration for speed-to-PWM relationship
         # This helps address motor asymmetry without direction-specific parameters
@@ -63,12 +61,8 @@ class MotorsController:
         self.last_time = current_time  # Using the actual time stored earlier
 
         # Calculate new speeds
-        new_right_speed = (delta_right / self.ticks_per_revolution) * 2 * math.pi / dt
-        new_left_speed = (delta_left / self.ticks_per_revolution) * 2 * math.pi / dt
-
-        # Apply low-pass filter to smooth speed readings
-        self.right_wheel_speed = self.filter_alpha * new_right_speed + (1 - self.filter_alpha) * self.right_wheel_speed
-        self.left_wheel_speed = self.filter_alpha * new_left_speed + (1 - self.filter_alpha) * self.left_wheel_speed
+        self.right_wheel_speed = ((delta_right / self.ticks_per_revolution) * 2 * math.pi / dt) / self.wheel_radius
+        self.left_wheel_speed  = ((delta_left / self.ticks_per_revolution) * 2 * math.pi / dt) / self.wheel_radius
 
         return self.right_wheel_speed, self.left_wheel_speed
 

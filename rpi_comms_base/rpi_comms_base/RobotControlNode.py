@@ -59,7 +59,7 @@ class RobotControlNode(Node):
         self.linear_speed_factor = 1.0
         self.turn_speed_factor = 1.0
 
-        self.motor_controller = MotorsController(self.motors_synchronizer, self.ticks_per_revolution)
+        self.motor_controller = MotorsController(self.motors_synchronizer, self.ticks_per_revolution, self.wheel_radius)
         self.closed_loop_speed_control_timer = self.create_timer(0.05, self.motor_controller.closed_loop_control_speed)  # 20Hz update rate
 
         # Time tracking
