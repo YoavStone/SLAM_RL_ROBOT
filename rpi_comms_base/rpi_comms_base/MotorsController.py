@@ -1,43 +1,36 @@
 import math
 import time
 
+from .MotorsSynchronizer import MotorsSynchronizer
+
 
 class MotorsController:
     def __init__(self, motors_synchronizer, ticks_per_revolution):
-        self.motors_synchronizer = motors_synchronizer
-        self.ticks_per_revolution = ticks_per_revolution
 
-        # Motor state tracking
+        self.motors_synchronizer = motors_synchronizer
+
         self.last_right_pos = 0.0
         self.last_left_pos = 0.0
+
         self.right_wheel_speed = 0.0
         self.left_wheel_speed = 0.0
-        self.last_time = time.time()
 
-        # Target speeds
         self.r_motor_desired_speed = 0.0
         self.l_motor_desired_speed = 0.0
 
-        # PID controller parameters
-        self.kp = 0.5  # Proportional gain
-        self.ki = 0.2  # Integral gain
-        self.kd = 0.05  # Derivative gain
+        # Reduced from 0.55 to avoid over-correction at high speeds
+        self.pwm_change_factor = 0.3
 
-        # Error history
-        self.r_prev_error = 0.0
-        self.l_prev_error = 0.0
-        self.r_integral = 0.0
-        self.l_integral = 0.0
-
-        # Anti-windup limits
-        self.max_integral = 0.3
-
-        # Speed limits
         self.max_speed = 0.8
-        self.min_speed = 0.05  # Minimum PWM to overcome static friction
+        # Minimum PWM to overcome static friction
+        self.min_speed = 0.1
 
-        # Reset timing
-        self.pid_last_time = time.time()
+        self.ticks_per_revolution = ticks_per_revolution
+
+        self.last_time = time.time()
+
+        # Add speed filtering to reduce noise
+        self.filter_alpha = 0.7  # 0-1, higher = more weight to new readings
 
     def get_motors_speeds(self):
         """
@@ -58,90 +51,82 @@ class MotorsController:
         current_time = time.time()
         dt = current_time - self.last_time
 
-        # Avoid division by zero and ensure reasonable dt
-        if dt < 0.001:
-            return self.right_wheel_speed, self.left_wheel_speed  # Return previous values
+        # Avoid division by zero and unreasonably small time steps
+        if dt < 0.01:
+            return self.right_wheel_speed, self.left_wheel_speed
 
-        # Update state
         self.last_right_pos = right_pos
         self.last_left_pos = left_pos
-        self.last_time = current_time
 
-        # Apply low-pass filter to reduce noise (weighted average)
-        alpha = 0.7  # Filter coefficient (0-1) - higher means more weight on new reading
+        self.last_time = current_time  # Using the actual time stored earlier
+
+        # Calculate new speeds
         new_right_speed = (delta_right / self.ticks_per_revolution) * 2 * math.pi / dt
         new_left_speed = (delta_left / self.ticks_per_revolution) * 2 * math.pi / dt
 
-        # Update speeds with filtering
-        self.right_wheel_speed = alpha * new_right_speed + (1 - alpha) * self.right_wheel_speed
-        self.left_wheel_speed = alpha * new_left_speed + (1 - alpha) * self.left_wheel_speed
+        # Apply low-pass filter to smooth speed readings (especially important at high speeds)
+        self.right_wheel_speed = self.filter_alpha * new_right_speed + (1 - self.filter_alpha) * self.right_wheel_speed
+        self.left_wheel_speed = self.filter_alpha * new_left_speed + (1 - self.filter_alpha) * self.left_wheel_speed
 
         return self.right_wheel_speed, self.left_wheel_speed
 
     def closed_loop_control_speed(self):
-        # Get current speeds
+
         self.get_motors_speeds()
 
-        # If both desired speeds are zero, stop motors and reset PID state
+        # If both motors should be stopped, just set PWM to 0
         if self.r_motor_desired_speed == 0.0 and self.l_motor_desired_speed == 0.0:
             self.motors_synchronizer.set_pwm(0.0, 0.0)
-            self.r_integral = 0.0
-            self.l_integral = 0.0
-            self.r_prev_error = 0.0
-            self.l_prev_error = 0.0
             return
 
-        # Calculate time since last PID update
-        current_time = time.time()
-        dt = current_time - self.pid_last_time
-        self.pid_last_time = current_time
-
-        # Ensure dt is reasonable
-        if dt < 0.001 or dt > 0.1:
-            dt = 0.05  # Use expected value if dt is too small or too large
-
-        # Calculate errors
-        r_error = self.r_motor_desired_speed - self.right_wheel_speed
-        l_error = self.l_motor_desired_speed - self.left_wheel_speed
-
-        # Update integral term with anti-windup
-        self.r_integral += r_error * dt
-        self.l_integral += l_error * dt
-
-        # Limit integral terms to prevent windup
-        self.r_integral = max(-self.max_integral, min(self.r_integral, self.max_integral))
-        self.l_integral = max(-self.max_integral, min(self.l_integral, self.max_integral))
-
-        # Calculate derivative term
-        r_derivative = (r_error - self.r_prev_error) / dt
-        l_derivative = (l_error - self.l_prev_error) / dt
-
-        # Save current error for next iteration
-        self.r_prev_error = r_error
-        self.l_prev_error = l_error
-
-        # Calculate PID output
-        r_output = (self.kp * r_error) + (self.ki * self.r_integral) + (self.kd * r_derivative)
-        l_output = (self.kp * l_error) + (self.ki * self.l_integral) + (self.kd * l_derivative)
+        # Calculate speed differences
+        dt_speeds_r = self.r_motor_desired_speed - self.right_wheel_speed
+        dt_speeds_l = self.l_motor_desired_speed - self.left_wheel_speed
 
         # Get current PWM values
         pwm_r = self.motors_synchronizer.R_Motor.pwm
         pwm_l = self.motors_synchronizer.L_Motor.pwm
 
-        # Calculate new PWM values
-        # Handle sign separately to maintain direction
+        # Calculate relative error only if desired speed is significant
+        if abs(self.r_motor_desired_speed) > 0.05:
+            error_speed_r = dt_speeds_r / abs(self.r_motor_desired_speed)
+        else:
+            error_speed_r = 0
+
+        if abs(self.l_motor_desired_speed) > 0.05:
+            error_speed_l = dt_speeds_l / abs(self.l_motor_desired_speed)
+        else:
+            error_speed_l = 0
+
+        # Calculate PWM adjustment, but with rate limiting for high speeds
+        if pwm_r != 0.0 and pwm_l != 0.0:
+            # Limit error correction at high speeds
+            max_correction = 0.1  # Maximum allowed correction per cycle
+
+            error_pwm_r = pwm_r * error_speed_r * self.pwm_change_factor
+            error_pwm_l = pwm_l * error_speed_l * self.pwm_change_factor
+
+            # Limit correction to prevent oscillations
+            error_pwm_r = max(-max_correction, min(error_pwm_r, max_correction))
+            error_pwm_l = max(-max_correction, min(error_pwm_l, max_correction))
+        else:
+            # Initial PWM values if current PWM is zero
+            error_pwm_r = 0.15 * error_speed_r * self.pwm_change_factor
+            error_pwm_l = 0.15 * error_speed_l * self.pwm_change_factor
+
+        # Determine sign to preserve direction
         r_sign = 1 if self.r_motor_desired_speed >= 0 else -1
         l_sign = 1 if self.l_motor_desired_speed >= 0 else -1
 
-        # Calculate absolute new PWM values
-        new_pwm_r_abs = abs(pwm_r) + r_output
-        new_pwm_l_abs = abs(pwm_l) + l_output
+        # Calculate new PWM values (absolute)
+        new_pwm_r_abs = abs(pwm_r + error_pwm_r)
+        new_pwm_l_abs = abs(pwm_l + error_pwm_l)
 
-        # Apply minimum PWM to overcome static friction if motors should be moving
-        if abs(self.r_motor_desired_speed) > 0.01:
+        # Apply minimum PWM to overcome friction if motors should be moving
+        if abs(self.r_motor_desired_speed) > 0.05:
             new_pwm_r_abs = max(self.min_speed, new_pwm_r_abs)
 
-        if abs(self.l_motor_desired_speed) > 0.01:
+        if abs(self.l_motor_desired_speed) > 0.05:
             new_pwm_l_abs = max(self.min_speed, new_pwm_l_abs)
 
         # Apply maximum speed limit
@@ -152,5 +137,5 @@ class MotorsController:
         new_pwm_r = new_pwm_r_abs * r_sign
         new_pwm_l = new_pwm_l_abs * l_sign
 
-        # Set motor PWM values
+        # Set new PWM values
         self.motors_synchronizer.set_pwm(new_pwm_r, new_pwm_l)
