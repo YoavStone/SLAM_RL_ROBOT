@@ -15,13 +15,13 @@ from .DQLEnv import DQLEnv
 
 # Hyperparameters
 GAMMA = 0.99
-LEARNING_RATE = 3.5e-4
+LEARNING_RATE = 3e-4
 BATCH_SIZE = 32
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
 EPSILON_END = 0.02
-EPSILON_DECAY = 45000  # Steps over which epsilon decays
+EPSILON_DECAY = 75000  # Steps over which epsilon decays
 TARGET_UPDATE_FREQ = 1000  # Steps between updating the target network
 
 SAVE_VIDEO_STEP_COUNT_THRESHOLD = 100
