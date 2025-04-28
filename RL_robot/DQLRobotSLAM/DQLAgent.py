@@ -116,7 +116,7 @@ class DQLAgent(Node):
 
         # --- Replay Buffer & Reward Tracking ---
         self.replay_buffer = deque(maxlen=BUFFER_SIZE)
-        self.reward_buffer = deque([0.0], maxlen=100)  # For logging avg reward
+        self.reward_buffer = deque([0.0], maxlen=1000)  # For logging avg reward
         self.episode_reward = 0.0
 
         # --- Saving Logic ---
@@ -385,7 +385,7 @@ class DQLAgent(Node):
             self.best_episode_reward = self.episode_reward
             try:
                 # Save with episode number for history tracking
-                numbered_best_path = f"{self.best_model_path}{self.episode_count}.pth"
+                numbered_best_path = f"{self.best_model_path}_ep_{self.episode_count}_reward_{self.episode_reward}.pth"
                 torch.save(self.q_network.state_dict(), numbered_best_path)
 
                 # Also save as the standard best model file

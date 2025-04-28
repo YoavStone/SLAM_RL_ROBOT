@@ -108,9 +108,9 @@ class BaseToRobot(Node):
         # Save terminal settings
         old_settings = termios.tcgetattr(sys.stdin)
         try:
+            # Set terminal to raw mode
+            tty.setraw(sys.stdin.fileno())
             while self.running:
-                # Set terminal to raw mode
-                tty.setraw(sys.stdin.fileno())
                 # Read a single character
                 key = sys.stdin.read(1)
                 # Restore terminal settings for logging
@@ -150,23 +150,18 @@ class BaseToRobot(Node):
         elif key == 'q':
             # Quit the program
             print('Quitting')
-            self.running = False
             self.cmd_vel_publisher.publish(twist)
-            rclpy.shutdown()
+            self.running = False
+            time.sleep(0.2)
+            self.context.shutdown()
             return
 
         # Publish the velocity command
-        self.cmd_vel_publisher.publish(twist)
+        if self.context.ok():
+             self.cmd_vel_publisher.publish(twist)
 
         # Restore terminal settings for next iteration
         tty.setraw(sys.stdin.fileno())
-
-    def cleanup(self):
-        # Stop the robot before shutting down
-        twist = Twist()
-        self.cmd_vel_publisher.publish(twist)
-        print('Stopping robot and shutting down')
-        self.running = False
 
 
 def main(args=None):
@@ -178,9 +173,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.cleanup()
+        print("clean up command robot node")
         node.destroy_node()
-        rclpy.shutdown()
 
 
 if __name__ == '__main__':
