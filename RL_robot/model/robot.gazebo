@@ -89,10 +89,10 @@
         <wheel_radius>${r}</wheel_radius>
 
     <!-- limits -->
-        <max_linear_acceleration>1.5</max_linear_acceleration>
-        <max_angular_acceleration>3.0</max_angular_acceleration>
-        <min_linear_acceleration>-1.5</min_linear_acceleration>
-        <min_angular_acceleration>-3.0</min_angular_acceleration>
+        <max_linear_acceleration>2.25</max_linear_acceleration>
+        <max_angular_acceleration>4.5</max_angular_acceleration>
+        <min_linear_acceleration>-2.25</min_linear_acceleration>
+        <min_angular_acceleration>-4.5</min_angular_acceleration>
 
     <!-- topic, frames and odometry -->
         <topic>cmd_vel_output</topic>

@@ -3,7 +3,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 
 
-ANGULAR_SPEED_FACTOR = 1.5
+ANGULAR_SPEED_FACTOR = 1.2
 
 
 class VelocityMiddleware(Node):
@@ -11,10 +11,10 @@ class VelocityMiddleware(Node):
         super().__init__('velocity_middleware')
 
         # Declare parameters with default values
-        self.declare_parameter('max_linear_accel', 1.5)
-        self.declare_parameter('max_linear_decel', 0.5)
-        self.declare_parameter('max_angular_accel', 3.0)
-        self.declare_parameter('max_angular_decel', 1.0)
+        self.declare_parameter('max_linear_accel', 2.25)
+        self.declare_parameter('max_linear_decel', 1.125)
+        self.declare_parameter('max_angular_accel', 4.5)
+        self.declare_parameter('max_angular_decel', 1.5)
         self.declare_parameter('rate_hz', 50.0)
 
         # Get parameter values

@@ -15,13 +15,13 @@ from .DQLEnv import DQLEnv
 
 # Hyperparameters
 GAMMA = 0.99
-LEARNING_RATE = 3e-4
+LEARNING_RATE = 1.5e-4
 BATCH_SIZE = 32
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
-EPSILON_END = 0.02
-EPSILON_DECAY = 75000  # Steps over which epsilon decays
+EPSILON_END = 0.05
+EPSILON_DECAY = 150000  # Steps over which epsilon decays
 TARGET_UPDATE_FREQ = 1000  # Steps between updating the target network
 
 SAVE_VIDEO_STEP_COUNT_THRESHOLD = 100
@@ -79,6 +79,8 @@ class DQLAgent(Node):
         self.get_logger().info(f"Observation space shape: {self.env.observation_space.shape}")
         self.get_logger().info(f"Action space size: {self.env.action_space.n}")
 
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100000, gamma=0.5)  # learning rate decay
+
         # --- Network Initialization ---
         self.q_network = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
         self.target_net = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
@@ -100,15 +102,15 @@ class DQLAgent(Node):
                 self.target_net.load_state_dict(self.q_network.state_dict())  # Sync target net
                 self.get_logger().info(f"✅ Successfully loaded model from {effective_load_path}")
             except Exception as e:
-                self.get_logger().error(f"⚠️ Failed to load model from {effective_load_path}: {e}. Starting fresh.")
+                self.get_logger().error(f"!!**!! Failed to load model from {effective_load_path}: {e}. Starting fresh.")
                 # Ensure target net is synced with the randomly initialized q_network
                 self.target_net.load_state_dict(self.q_network.state_dict())
         else:
             self.target_net.load_state_dict(self.q_network.state_dict())  # Sync target net
             if self.model_path:
-                self.get_logger().warn(f"⚠️ Specified model path '{self.model_path}' not found.")
+                self.get_logger().warn(f"!!**!! Specified model path '{self.model_path}' not found.")
             elif load_path == self.best_model_name:
-                self.get_logger().info(f"⚠️ Default best model '{potential_best_path}' not found. Starting fresh.")
+                self.get_logger().info(f"!!**!! Default best model '{potential_best_path}' not found. Starting fresh.")
             else:
                 self.get_logger().info("No model path specified or found. Starting fresh.")
 
@@ -260,7 +262,7 @@ class DQLAgent(Node):
             # Update Target Network
             if self.steps % TARGET_UPDATE_FREQ == 0 and self.steps > 0:
                 self.target_net.load_state_dict(self.q_network.state_dict())
-                self.get_logger().info(f"🔄 Updated target network at step {self.steps}")
+                self.get_logger().info(f"**--** Updated target network at step {self.steps}")
 
         self.steps += 1
 
@@ -364,6 +366,8 @@ class DQLAgent(Node):
         loss.backward()  # Compute gradients
         self.optimizer.step()  # Update network weights
 
+        self.scheduler.step()  # learning rate decay
+
     def save_models(self):
         """Save current episode model and update best model if applicable"""
         # Only save models after a certain number of episodes
@@ -376,9 +380,9 @@ class DQLAgent(Node):
                 episode_model_name = f"episode_{self.episode_count}_reward_{self.episode_reward:.2f}_dqn_model.pth"
                 episode_model_path = os.path.join(self.episode_model_dir, episode_model_name)
                 torch.save(self.q_network.state_dict(), episode_model_path)
-                self.get_logger().info(f"💾 Saved episode model to {episode_model_path}")
+                self.get_logger().info(f"@@**@@ Saved episode model to {episode_model_path}")
             except Exception as e:
-                self.get_logger().error(f"🔥 Failed to save episode model: {e}")
+                self.get_logger().error(f"!!**!! Failed to save episode model: {e}")
 
         # Save Best Model if Current Episode is Better
         if self.episode_reward > self.best_episode_reward:
@@ -392,7 +396,7 @@ class DQLAgent(Node):
                 torch.save(self.q_network.state_dict(), f"{self.best_model_path}.pth")
 
                 self.get_logger().info(
-                    f"🏆 Saved NEW BEST model! Episode: {self.episode_count}, Reward: {self.best_episode_reward:.2f}"
+                    f"@@@**--**@@@ Saved NEW BEST model! Episode: {self.episode_count}, Reward: {self.best_episode_reward:.2f}"
                 )
             except Exception as e:
                 self.get_logger().error(f"🔥 Failed to save new best model: {e}")
