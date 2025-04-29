@@ -5,7 +5,7 @@ import numpy as np
 
 class DuelingDQN(nn.Module):
     """
-    DQN of size input -> 512 -> 256 -> (splits into two networks)
+    DQN of size input -> 512 -> 512 -> 256 -> (splits into two networks)
     -> (Dueling dqn) -> 128 -> state value
     -> (dqn) -> 128 -> action values
     """
