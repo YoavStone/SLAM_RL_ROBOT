@@ -11,6 +11,7 @@ from rclpy.node import Node
 from std_msgs.msg import Empty
 
 from .DQNetwork import DQNetwork
+from .DuelingDQN import DuelingDQN
 from .DQLEnv import DQLEnv
 
 # Hyperparameters
@@ -79,11 +80,13 @@ class DQLAgent(Node):
         self.get_logger().info(f"Observation space shape: {self.env.observation_space.shape}")
         self.get_logger().info(f"Action space size: {self.env.action_space.n}")
 
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100000, gamma=0.5)  # learning rate decay
+        # # --- Network Initialization --- for when using standard dqn
+        # self.q_network = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
+        # self.target_net = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
 
         # --- Network Initialization ---
-        self.q_network = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
-        self.target_net = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
+        self.q_network = DuelingDQN(self.env.observation_space.shape, self.env.action_space.n)
+        self.target_net = DuelingDQN(self.env.observation_space.shape, self.env.action_space.n)
 
         # --- Load Pre-trained Model (if specified) ---
         load_path = self.model_path if self.model_path else self.best_model_name  # Try loading best if no specific path given
@@ -115,6 +118,7 @@ class DQLAgent(Node):
                 self.get_logger().info("No model path specified or found. Starting fresh.")
 
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100000, gamma=0.5)  # learning rate decay
 
         # --- Replay Buffer & Reward Tracking ---
         self.replay_buffer = deque(maxlen=BUFFER_SIZE)
@@ -141,8 +145,7 @@ class DQLAgent(Node):
         self.steps = 0
         self.episode_count = 0  # Start counting episodes from 0
 
-        self.get_logger().info(
-            f"DQL Agent initialized successfully in {'LEARNING' if self.learning_mode else 'EXECUTION'} mode.")
+        self.get_logger().info(f"DQL Agent initialized successfully in {'LEARNING' if self.learning_mode else 'EXECUTION'} mode.")
         if self.learning_mode and len(self.replay_buffer) < MIN_REPLAY_SIZE:
             self.get_logger().info("Initializing replay buffer...")
             # Start buffer initialization immediately if in learning mode
