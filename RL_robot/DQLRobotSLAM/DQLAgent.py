@@ -16,7 +16,9 @@ from .DQLEnv import DQLEnv
 
 # Hyperparameters
 GAMMA = 0.99
-LEARNING_RATE = 1.5e-4
+LEARNING_RATE_START = 2.5e-4
+LEARNING_RATE_END = 1e-4
+LEARNING_RATE_DECAY = 150000
 BATCH_SIZE = 32
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
@@ -117,8 +119,20 @@ class DQLAgent(Node):
             else:
                 self.get_logger().info("No model path specified or found. Starting fresh.")
 
-        self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100000, gamma=0.5)  # learning rate decay
+        # Initialize optimizer with starting learning rate
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE_START)
+        # Create cosine annealing scheduler ---- for learning rate decay ----
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer,
+            T_max=LEARNING_RATE_DECAY,  # Total steps for the decay
+            eta_min=LEARNING_RATE_END  # Minimum learning rate
+        )
+
+        # Log the learning rate configuration
+        self.get_logger().info(f"Learning rate scheduler configured:")
+        self.get_logger().info(f"  Initial rate: {LEARNING_RATE_START}")
+        self.get_logger().info(f"  Final rate: {LEARNING_RATE_END}")
+        self.get_logger().info(f"  Decay steps: {LEARNING_RATE_DECAY}")
 
         # --- Replay Buffer & Reward Tracking ---
         self.replay_buffer = deque(maxlen=BUFFER_SIZE)
@@ -200,7 +214,7 @@ class DQLAgent(Node):
             if init_steps % 20 == 0:
                 self.get_logger().info(f"Replay buffer filling: {len(self.replay_buffer)}/{MIN_REPLAY_SIZE}")
 
-        self.get_logger().info("✅ Replay buffer initialized.")
+        self.get_logger().info("++--++ Replay buffer initialized.")
         self.training_initialized = True
         return True
 
@@ -307,10 +321,13 @@ class DQLAgent(Node):
         self.reward_buffer.append(self.episode_reward)  # Add final reward to buffer for avg calculation
         mean_reward_100 = np.mean(self.reward_buffer)
 
+        # log episode details
+        current_lr = self.optimizer.param_groups[0]['lr']
         self.get_logger().info(
             f"--- Episode {self.episode_count} Finished --- \n"
             f"Reward: {self.episode_reward:.2f} | Avg Reward (Last 100): {mean_reward_100:.2f} \n"
             f"Steps: {self.steps} | Epsilon: {np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end]):.3f} \n"
+            f"Current learning rate: {current_lr:.6f} at step {self.steps}"
             f"-------------------------------------"
         )
 
