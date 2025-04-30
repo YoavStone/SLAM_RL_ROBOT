@@ -21,7 +21,12 @@ def generate_launch_description():
             'serial_port': serial_port,
             'frame_id': 'base_footprint',
             'angle_compensate': True,
-            'scan_mode': 'Standard'
+            'scan_mode': 'Standard',
+            'angle_min': 0.0,            # Start angle in radians (0 degrees)
+            'angle_max': 6.28318531,     # End angle in radians (360 degrees or 2π)
+            'scan_frequency': 10.0,      # Optional: Set scan frequency in Hz
+            'range_min': 0.15,           # Optional: Minimum detection range (meters)
+            'range_max': 12.0            # Optional: Maximum detection range (meters)
         }]
     )
 

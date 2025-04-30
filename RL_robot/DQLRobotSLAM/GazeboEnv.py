@@ -12,8 +12,8 @@ from .RewardCalculator import RewardCalculator
 from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
-LINEAR_SPEED = 0.0  # irl: 0.3  # m/s
-ANGULAR_SPEED = 0.0  # irl: 0.3  # rad/s
+LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
+ANGULAR_SPEED = 0.3  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
@@ -346,7 +346,7 @@ class GazeboEnv(Node):
     def execute_action(self, action):
         """Execute action by publishing to cmd_vel"""
         cmd = self.action_to_cmd(action)
-        self.cmd_vel_pub.publish(cmd)
+        # self.cmd_vel_pub.publish(cmd)
 
     def get_state(self):
         """Get the current state representation with position converted to grid cell coordinates"""
