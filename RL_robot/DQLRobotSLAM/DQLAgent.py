@@ -413,7 +413,7 @@ class DQLAgent(Node):
             self.best_episode_reward = self.episode_reward
             try:
                 # Save with episode number for history tracking
-                numbered_best_path = f"{self.best_model_path}_ep_{self.episode_count}_reward_{self.episode_reward}.pth"
+                numbered_best_path = f"{self.best_model_path}_ep_{self.episode_count}_reward_{self.episode_reward:.2f}.pth"
                 torch.save(self.q_network.state_dict(), numbered_best_path)
 
                 # Also save as the standard best model file

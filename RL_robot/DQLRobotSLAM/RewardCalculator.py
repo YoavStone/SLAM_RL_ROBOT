@@ -235,11 +235,11 @@ class RewardCalculator:
         for idx, distance in enumerate(new_dis):
             adjusted = self.scale_distance_by_scan_angle(distance, idx, len(new_dis))
             adjusted_distances.append(adjusted)
-            # log distances and scaling
-            if self.step_counter % 20 == 0:
-                robot_angle_degrees = (360/len(new_dis))*idx
-                scale_factor = adjusted/distance
-                print(f"Angle {robot_angle_degrees:.1f}°: {distance:.2f}m -> {adjusted:.2f}m (scale: {scale_factor:.2f})")
+            # # log distances and scaling
+            # if self.step_counter % 20 == 0:
+            #     robot_angle_degrees = (360/len(new_dis))*idx
+            #     scale_factor = adjusted/distance
+            #     print(f"Angle {robot_angle_degrees:.1f}°: {distance:.2f}m -> {adjusted:.2f}m (scale: {scale_factor:.2f})")
 
         closest = min(adjusted_distances)
         is_terminated = False
