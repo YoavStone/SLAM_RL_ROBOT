@@ -21,7 +21,7 @@ class WallFollower(Node):
         self.region_front = 1.0
         self.region_left = 1.0
         self.region_right = 1.0
-        self.error_from_wall = 0.4
+        self.error_from_wall = 0.45
         self.wall_found = False
         self.dont_update_for_secs = 0.2  # sleep for more continues actions
 
