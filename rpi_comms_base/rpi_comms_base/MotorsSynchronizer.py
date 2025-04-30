@@ -4,12 +4,12 @@ from .MotorDriver import MotorDriver
 class MotorsSynchronizer:
     def __init__(self, right_pin1, right_pin2, left_pin1, left_pin2, right_pwm_pin, left_pwm_pin, pwm_frequency, right_enable_pin_a, right_enable_pin_b, left_enable_pin_a, left_enable_pin_b):
         # Initialize right motor
-        # in1, in2: direction control pins
+        # in3, in4: direction control pins
         # pwmR: enable pin for PWM speed control (ENA)
         self.R_Motor = MotorDriver(right_pin1, right_pin2, right_pwm_pin, pwm_frequency, right_enable_pin_a, right_enable_pin_b)
 
         # Initialize left motor
-        # in3, in4: direction control pins
+        # in1, in2: direction control pins
         # pwmL: enable pin for PWM speed control (ENB)
         self.L_Motor = MotorDriver(left_pin1, left_pin2, left_pwm_pin, pwm_frequency, left_enable_pin_a, left_enable_pin_b)
 
