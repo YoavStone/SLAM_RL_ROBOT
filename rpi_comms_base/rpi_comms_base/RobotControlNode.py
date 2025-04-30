@@ -32,7 +32,7 @@ class RobotControlNode(Node):
 
         FREQ = 1000
 
-        self.motors_synchronizer = MotorsSynchronizer(in1, in2, in3, in4, pwmR, pwmL, FREQ, ena1, enb1, ena2, enb2)
+        self.motors_synchronizer = MotorsSynchronizer(in3, in4, in1, in2, pwmR, pwmL, FREQ, ena1, enb1, ena2, enb2)
         self.motors_synchronizer.call_encoder_interrupt()
 
         # Initialize velocity subscriber

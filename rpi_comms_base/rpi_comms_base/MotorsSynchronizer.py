@@ -15,11 +15,11 @@ class MotorsSynchronizer:
 
     def go_forward(self):
         self.R_Motor.forward()
-        self.L_Motor.forward()
+        self.L_Motor.backwards()
 
     def go_backwards(self):
         self.R_Motor.backwards()
-        self.L_Motor.backwards()
+        self.L_Motor.forward()
 
     def stop(self):
         self.R_Motor.stop()
@@ -27,11 +27,11 @@ class MotorsSynchronizer:
 
     def turn_right(self):
         self.R_Motor.backwards()
-        self.L_Motor.forward()
+        self.L_Motor.backwards()
 
     def turn_left(self):
         self.R_Motor.forward()
-        self.L_Motor.backwards()
+        self.L_Motor.forward()
 
     def set_pwm(self, right_pwm, left_pwm):
         right_pwm = min(abs(right_pwm), 1.0)
@@ -44,4 +44,4 @@ class MotorsSynchronizer:
         self.L_Motor.call_encoder_interrupt()
 
     def get_motors_pos(self):
-        return self.R_Motor.get_pos(), self.L_Motor.get_pos()
+        return self.R_Motor.get_pos(), -self.L_Motor.get_pos()
