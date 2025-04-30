@@ -3,7 +3,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 
 
-ANGULAR_SPEED_FACTOR = 1.2
+ANGULAR_SPEED_FACTOR = 1
 
 
 class VelocityMiddleware(Node):

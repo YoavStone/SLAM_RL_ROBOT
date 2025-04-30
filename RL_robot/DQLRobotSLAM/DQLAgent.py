@@ -44,6 +44,8 @@ class DQLAgent(Node):
         self.declare_parameter('epsilon_decay', EPSILON_DECAY)  # Steps for decay
         # Add spawn_location parameter for reset handler
         self.declare_parameter('spawn_location', '')  # For reset handler
+        # parameter for if running a simulation or running the robot
+        self.declare_parameter('is_sim', True)  # For Env
 
         self.learning_mode = self.get_parameter('learning_mode').value
         self.model_path = self.get_parameter('model_path').value
@@ -54,6 +56,7 @@ class DQLAgent(Node):
         self.epsilon_decay = self.get_parameter('epsilon_decay').value
         # Get spawn location parameter for reset handler
         self.spawn_location = self.get_parameter('spawn_location').value
+        self.is_sim = self.get_parameter('is_sim').value
 
         self.get_logger().info(f"--- DQL Agent Configuration ---")
         self.get_logger().info(f"Learning Mode: {self.learning_mode}")
@@ -63,10 +66,11 @@ class DQLAgent(Node):
         self.get_logger().info(f"Epsilon End: {self.epsilon_end}")
         self.get_logger().info(f"Epsilon Decay Steps: {self.epsilon_decay}")
         self.get_logger().info(f"Spawn Location: '{self.spawn_location}'")
+        self.get_logger().info(f"Is Simulation: '{self.is_sim}'")
         self.get_logger().info(f"-------------------------------")
 
         # --- Environment Setup ---
-        self.env = DQLEnv()
+        self.env = DQLEnv(is_sim=self.is_sim)
 
         # Wait for observation space initialization
         while self.env.observation_space is None:

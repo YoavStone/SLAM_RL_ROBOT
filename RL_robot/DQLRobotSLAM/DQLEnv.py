@@ -11,11 +11,15 @@ from .GazeboEnv import GazeboEnv
 class DQLEnv:
     """Adapter class that bridges between GazeboEnv and the DQL agent"""
 
-    def __init__(self, rad_of_robot=0.34):
+    def __init__(self, is_sim=True, rad_of_robot=0.34):
+        self.is_sim = is_sim
         # Initialize ROS node for environment
         self.gazebo_env = GazeboEnv(rad_of_robot=rad_of_robot)
 
-        self.reset_handler = SimulationResetHandler(self.gazebo_env)
+        if self.is_sim:
+            self.reset_handler = SimulationResetHandler(self.gazebo_env)
+        else:
+            self.reset_handler = None
 
         # Run a few spin cycles to get initial data
         for _ in range(10):
@@ -52,10 +56,11 @@ class DQLEnv:
         Also handles automatic environment resets when needed.
         """
         # Skip actions if reset is in progress
-        if self.reset_handler.is_reset_in_progress():
-            self.gazebo_env.get_logger().debug("Skipping action during reset")
-            # Return the last state with zero reward and done=False
-            return self.get_state(), 0.0, False, False, {}
+        if self.is_sim:
+            if self.reset_handler.is_reset_in_progress():
+                self.gazebo_env.get_logger().debug("Skipping action during reset")
+                # Return the last state with zero reward and done=False
+                return self.get_state(), 0.0, False, False, {}
 
         # Execute the action
         self.gazebo_env.execute_action(action)
@@ -93,7 +98,8 @@ class DQLEnv:
         # Only call the reset handler if something ended the episode
         is_done = terminated or truncated
         if is_done:
-            self.reset_handler.update(terminated, truncated)
+            if self.is_sim:
+                self.reset_handler.update(terminated, truncated)
 
         return new_state, reward, terminated, truncated, {}
 
@@ -120,16 +126,18 @@ class DQLEnv:
                 time.sleep(0.1)
 
         # Check if we're already in a reset state
-        if self.reset_handler.is_reset_in_progress():
-            self.gazebo_env.get_logger().info("Reset already in progress, waiting...")
+        if self.is_sim:
+            if self.reset_handler.is_reset_in_progress():
+                self.gazebo_env.get_logger().info("Reset already in progress, waiting...")
 
-            # Wait until reset is complete
-            while self.reset_handler.is_reset_in_progress():
-                rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
+                # Wait until reset is complete
+                while self.reset_handler.is_reset_in_progress():
+                    rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
 
-            self.gazebo_env.reset()
+                time.sleep(0.5)  # so everything has time to reset / if not sim than so it wont try to move to much after hitting wall
+                self.gazebo_env.reset()
 
-            return self.get_state(), {}
+                return self.get_state(), {}
 
         # If no reset is in progress, initiate one
         self.gazebo_env.get_logger().info("Manual reset requested")
@@ -139,15 +147,19 @@ class DQLEnv:
         self.step_count = 0
 
         # Let the reset handler know we're starting a reset
-        self.reset_handler.is_resetting = True
+        if self.is_sim:
+            self.reset_handler.is_resetting = True
 
         # Start the reset sequence (odom correction -> teleport -> SLAM reset)
-        self.reset_handler.reset_environment()
+        if self.is_sim:
+            self.reset_handler.reset_environment()
 
         # Wait until reset is complete
-        while self.reset_handler.is_reset_in_progress():
-            rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
+        if self.is_sim:
+            while self.reset_handler.is_reset_in_progress():
+                rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
 
+        time.sleep(0.5)  # so everything has time to reset / if not sim than so it wont try to move to much after hitting wall
         self.gazebo_env.reset()
 
         # Now that reset is done, get the new state

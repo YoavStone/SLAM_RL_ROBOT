@@ -20,21 +20,18 @@ def generate_launch_description():
     )
 
     # Create node to run pre-trained model (without simulation components)
-    dqn_node = Node(
-        package=namePackage,
-        executable='dqn_agent_node',  # Make sure this matches your executable name
-        name='dqn_inference_node',
-        output='screen',
-        parameters=[
-            {
-                'learning_mode': 'False',  # Always false - just run the model
-                'model_path': model_path,
-                # Fixed values for other parameters that were previously configurable
-                'epsilon_start': 0.0,  # No exploration during inference
-                'epsilon_end': 0.0,
-                'epsilon_decay': 1
-            }
-        ]
+    dqn_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory(namePackage), 'launch', 'slam_dqn_agent_launch.py')
+        ]),
+        launch_arguments={
+            'learning_mode': 'False',
+            'model_path': model_path,
+            'epsilon_start': '0.0',
+            'epsilon_end': '0.0',
+            'epsilon_decay': '1',
+            'is_sim': 'False'
+        }.items()
     )
 
     # Add SLAM Toolbox
@@ -59,5 +56,5 @@ def generate_launch_description():
         slam_toolbox_launch,
         rviz,
         model_path_arg,
-        dqn_node
+        dqn_launch
     ])

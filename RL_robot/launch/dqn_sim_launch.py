@@ -21,6 +21,8 @@ def generate_launch_description():
     epsilon_start = LaunchConfiguration('epsilon_start')
     epsilon_end = LaunchConfiguration('epsilon_end')
     epsilon_decay = LaunchConfiguration('epsilon_decay')
+    # is it simulation or rl
+    is_sim = LaunchConfiguration('is_sim')
 
     spawn_location_arg = DeclareLaunchArgument(
         'spawn_location',
@@ -72,6 +74,12 @@ def generate_launch_description():
         description='Number of steps over which epsilon decays from start to end value'
     )
 
+    is_sim_arg = DeclareLaunchArgument(
+        'is_sim',
+        default_value='True',
+        description='if launching sim or robot'
+    )
+
     # Launch Gazebo and the robot
     gazebo_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
@@ -104,7 +112,8 @@ def generate_launch_description():
             'epsilon_start': epsilon_start,
             'epsilon_end': epsilon_end,
             'epsilon_decay': epsilon_decay,
-            'spawn_location': spawn_location
+            'spawn_location': spawn_location,
+            'is_sim': is_sim,
         }.items()
     )
 
@@ -117,6 +126,7 @@ def generate_launch_description():
         spawn_location_arg,
         robot_spawn_x_arg,
         robot_spawn_y_arg,
+        is_sim_arg,
         gazebo_launch,      # Launch Gazebo first
         teleport_service_node,
         dqn_launch          # Launch the DQN agent (with integrated reset handler)
