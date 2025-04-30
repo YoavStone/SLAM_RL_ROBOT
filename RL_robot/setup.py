@@ -76,6 +76,8 @@ setup(
             'velocity_middleware = sim_control.launch_vel_middleware:main',
             'teleport_service = sim_control.TeleportService:main',
 
+            'tf_broadcaster = RL_robot.TFBroadCaster:main',
+
             'control_motors = RL_robot.command_robot:main',
 
             'follow_wall = RL_robot.follow_left_wall:main',
