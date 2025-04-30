@@ -34,7 +34,6 @@ def generate_launch_description():
         }.items()
     )
 
-    # Add SLAM Toolbox
     # Async toolbox SLAM parameters file
     absPathParamSLAM = os.path.join(get_package_share_directory(namePackage),
                                     'parameters/mapper_params_online_async.yaml')
@@ -42,7 +41,7 @@ def generate_launch_description():
     slam_toolbox_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')]),
-        launch_arguments={'use_sim_time': 'false', 'slam_params_file': absPathParamSLAM}.items()
+        launch_arguments={'use_sim_time': 'true', 'slam_params_file': absPathParamSLAM}.items()
     )
 
     # RViz
