@@ -121,11 +121,11 @@ class DQLAgent(Node):
 
         # Initialize optimizer with starting learning rate
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE_START)
-        # Create cosine annealing scheduler ---- for learning rate decay ----
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        # Create Exponential decay (smooth)
+        decay_rate = np.log(LEARNING_RATE_END/LEARNING_RATE_START) / LEARNING_RATE_DECAY
+        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
             self.optimizer,
-            T_max=LEARNING_RATE_DECAY,  # Total steps for the decay
-            eta_min=LEARNING_RATE_END  # Minimum learning rate
+            gamma=np.exp(decay_rate)
         )
 
         # Log the learning rate configuration

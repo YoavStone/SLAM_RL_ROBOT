@@ -15,15 +15,15 @@ class WallFollower(Node):
         self.subscription_ = self.create_subscription(LaserScan, '/scan', self.listener_callback, 10)
         self.subscription_  # prevent unused variable warning
 
-        self.desired_distance = 0.5  # distance from the wall
-        self.forward_speed = 1.0  # 0.5 for normal speed
-        self.angular_speed = 1.0  # 0.5 for normal speed
+        self.desired_distance = 0.6  # distance from the wall
+        self.forward_speed = 0.3  # 0.3 for normal speed
+        self.angular_speed = 0.6  # 0.6 for normal speed
         self.region_front = 1.0
         self.region_left = 1.0
         self.region_right = 1.0
         self.error_from_wall = 0.4
         self.wall_found = False
-        self.dont_update_for_secs = 0.3  # sleep for more continues actions
+        self.dont_update_for_secs = 0.2  # sleep for more continues actions
 
 
     def listener_callback(self, msg):
@@ -37,18 +37,19 @@ class WallFollower(Node):
         print(num_ranges)
 
         # Define regions for front, left, and right
-        front_indices = range(num_ranges // 2 - 35, num_ranges // 2 + 35)  # Front 70/2 degrees
-        right_indices = range(num_ranges // 4, num_ranges // 4 + 60)  # right 60/2 degrees
-        left_indices = range(3 * num_ranges // 4 - 60, 3 * num_ranges // 4)  # left 60/2 degrees
+        # Front is now centered at index 0, spanning +/-35 degrees
+        front_indices = list(range(num_ranges - 35, num_ranges)) + list(range(0, 35 + 1))
+        right_indices = range(num_ranges - 35 - 60, num_ranges - 35)  # right 60/2 degrees
+        left_indices = range(35 + 1, 35 + 60 + 1)  # left 60/2 degrees
 
         # Calculate minimum distances in each region
         self.region_front = min([ranges[i] for i in front_indices if not math.isinf(ranges[i])], default=float('inf'))
         self.region_left = min([ranges[i] for i in left_indices if not math.isinf(ranges[i])], default=float('inf'))
         self.region_right = min([ranges[i] for i in right_indices if not math.isinf(ranges[i])], default=float('inf'))
 
-        print(front_indices, self.region_front)
-        print(left_indices, self.region_left)
-        print(right_indices, self.region_right)
+        print("front closest: ", self.region_front)
+        print("left closest: ", self.region_left)
+        print("right closest: ", self.region_right)
 
     def is_searching_wall(self):
         if self.region_front - self.desired_distance < self.error_from_wall:
