@@ -43,6 +43,8 @@ class RewardCalculator:
         self.visit_count_map = None
         self.last_position = None
 
+        self.step_counter = 0
+
 
 ### getters and setters
 
@@ -219,7 +221,7 @@ class RewardCalculator:
         adjusted_distance = scan_distance * scale_factor
 
         # if self.step_counter % 20 == 0:
-        #     print(f"  Angle {robot_angle_degrees:.1f}°: {scan_distance:.2f}m → {adjusted_distance:.2f}m (scale: {scale_factor:.2f})")
+        #     print(f"Angle {robot_angle_degrees:.1f}°: {scan_distance:.2f}m -> {adjusted_distance:.2f}m (scale: {scale_factor:.2f})")
 
         return adjusted_distance
 
@@ -228,10 +230,16 @@ class RewardCalculator:
         Calculate punishment based on adjusted distances to walls
         """
         # Apply distance adjustments based on scan angles
+        robot_angle_degrees = 0
         adjusted_distances = []
         for idx, distance in enumerate(new_dis):
             adjusted = self.scale_distance_by_scan_angle(distance, idx, len(new_dis))
             adjusted_distances.append(adjusted)
+            # log distances and scaling
+            if self.step_counter % 20 == 0:
+                robot_angle_degrees = (360/len(new_dis))*idx
+                scale_factor = adjusted/distance
+                print(f"Angle {robot_angle_degrees:.1f}°: {distance:.2f}m -> {adjusted:.2f}m (scale: {scale_factor:.2f})")
 
         closest = min(adjusted_distances)
         is_terminated = False
@@ -310,6 +318,8 @@ class RewardCalculator:
 
     def calc_reward(self, time_from_last_env_update, new_dis, new_map, grid_position, odom_pos, action):
         """Calculate reward based on time spent, proximity to walls, and exploration"""
+        self.step_counter += 1
+
         # Time-based continuous punishment
         cont = CONTINUES_PUNISHMENT * time_from_last_env_update
         self.last_cont_punishment = cont
@@ -362,6 +372,8 @@ class RewardCalculator:
         self.total_cells = None
         self.visit_count_map = None
         self.last_position = None
+
+        self.step_counter = 0
 
         # Reset reward visualization
         self.reward_vis.reset_data()

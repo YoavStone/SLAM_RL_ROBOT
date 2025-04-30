@@ -12,8 +12,8 @@ from .RewardCalculator import RewardCalculator
 from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
-LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
-ANGULAR_SPEED = 0.3  # irl: 0.3  # rad/s
+LINEAR_SPEED = 0.0  # irl: 0.3  # m/s
+ANGULAR_SPEED = 0.0  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
@@ -264,7 +264,6 @@ class GazeboEnv(Node):
 
         # print("updated map")
         if self.observation_space is None:
-            obs_size = len(self.get_state())
             self.observation_space = spaces.Box(
                 low=np.array([-1, -1, -100, -100] + [-3, -3] + [0] * 16 + [-1] * len(self.map_processed)),
                 high=np.array([1, 1, 100, 100] + [3, 3] + [13] * 16 + [1] * len(self.map_processed)),
@@ -359,6 +358,9 @@ class GazeboEnv(Node):
 
         if self.velocities is None:
             self.velocities = [0.0, 0.0]
+
+        print("pos: ", self.grid_position)
+        print("vel: ", self.velocities)
 
         # Return state with grid position
         return self.grid_position + self.velocities + self.measured_distance_to_walls + self.map_processed
