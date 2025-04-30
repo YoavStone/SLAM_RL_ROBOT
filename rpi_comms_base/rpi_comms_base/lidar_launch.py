@@ -24,7 +24,8 @@ def generate_launch_description():
             'scan_mode': 'Standard',
             'angle_min': 0.0,            # Start angle in radians (0 degrees)
             'angle_max': 6.28318531,     # End angle in radians (360 degrees or 2π)
-            'scan_frequency': 10.0,      # Optional: Set scan frequency in Hz
+            'angle_offset': 3.14159265,  # Add 180 degrees (π radians) rotation offset
+            'scan_frequency': 5.5,      # Optional: Set scan frequency in Hz
             'range_min': 0.15,           # Optional: Minimum detection range (meters)
             'range_max': 12.0            # Optional: Maximum detection range (meters)
         }]
