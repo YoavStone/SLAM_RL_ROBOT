@@ -4,6 +4,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+
 def generate_launch_description():
     serial_port_arg = DeclareLaunchArgument(
         'serial_port',
@@ -19,7 +20,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'serial_port': serial_port,
-            'frame_id': 'base_footprint',
+            'frame_id': 'lidar_link',
             'angle_compensate': True,
             'scan_mode': 'Standard',
             'angle_min': 0.0,            # Start angle in radians (0 degrees)
@@ -30,7 +31,24 @@ def generate_launch_description():
         }]
     )
 
+    base_to_body_transform = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='base_to_body_transform',
+        arguments=['0', '0', '0', '0', '0', '0', 'base_footprint', 'body_link']
+    )
+
+    # relative to body link (with 180 degree rotation)
+    body_to_lidar_transform = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='body_to_lidar_transform',
+        arguments=['-0.12', '0', '0.312', '3.14159', '0', '0', 'body_link', 'lidar_link']
+    )
+
     return LaunchDescription([
         serial_port_arg,
+        base_to_body_transform,
+        body_to_lidar_transform,
         rplidar_node
     ])
