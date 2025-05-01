@@ -43,7 +43,7 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='body_to_lidar_transform',
-        arguments=['-0.12', '0', '0.312', '3.14159', '0', '0', 'body_link', 'lidar_link']
+        arguments=['-0.12', '0', '0.312', '0', '0', '0', 'body_link', 'lidar_link']
     )
 
     tf_broadcaster = Node(
