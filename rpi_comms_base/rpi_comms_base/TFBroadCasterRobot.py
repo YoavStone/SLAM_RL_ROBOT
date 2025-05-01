@@ -5,7 +5,7 @@ from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 import math
 import numpy as np
-from transforms3d.euler import quat2euler, euler2quat  # You'll need pip install transforms3d
+from transforms3d.euler import quat2euler, euler2quat
 
 
 class TFBroadCasterRobot(Node):
@@ -25,26 +25,33 @@ class TFBroadCasterRobot(Node):
         transform.header.frame_id = 'odom'
         transform.child_frame_id = 'base_footprint'
 
-        # Copy position from odometry
-        transform.transform.translation.x = msg.pose.pose.position.x
-        transform.transform.translation.y = msg.pose.pose.position.y
+        # Invert the X and Y positions (flip 180 degrees)
+        transform.transform.translation.x = -msg.pose.pose.position.x
+        transform.transform.translation.y = -msg.pose.pose.position.y
         transform.transform.translation.z = msg.pose.pose.position.z
 
-        # Extract quaternion and convert to Euler angles
-        q = [msg.pose.pose.orientation.x,
-             msg.pose.pose.orientation.y,
-             msg.pose.pose.orientation.z,
-             msg.pose.pose.orientation.w]
+        # For orientation, we need to handle it differently
+        # Rotate 180 degrees around the Z axis (invert both x and y)
+        q_orig = [
+            msg.pose.pose.orientation.x,
+            msg.pose.pose.orientation.y,
+            msg.pose.pose.orientation.z,
+            msg.pose.pose.orientation.w
+        ]
 
-        roll, pitch, yaw = quat2euler(q)
+        # This approach inverts the X and Y components of rotation
+        # which effectively produces a 180-degree rotation around Z
+        q_new = [
+            -q_orig[0],  # Invert X
+            -q_orig[1],  # Invert Y
+            q_orig[2],  # Keep Z the same
+            q_orig[3]  # Keep W the same
+        ]
 
-        # Add 180 degrees to the yaw (rotate around Z axis)
-        yaw += math.pi
+        # Normalize the quaternion to ensure it remains valid
+        magnitude = math.sqrt(sum(x * x for x in q_new))
+        q_new = [x / magnitude for x in q_new]
 
-        # Convert back to quaternion
-        q_new = euler2quat(roll, pitch, yaw)
-
-        # Set the new orientation
         transform.transform.rotation.x = q_new[0]
         transform.transform.rotation.y = q_new[1]
         transform.transform.rotation.z = q_new[2]
