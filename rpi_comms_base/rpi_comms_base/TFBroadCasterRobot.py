@@ -26,39 +26,21 @@ class TFBroadCasterRobot(Node):
         )
 
     def odom_callback(self, msg):
+        # Create and broadcast TF transform from odom to base_footprint
         transform = TransformStamped()
         transform.header.stamp = msg.header.stamp
         transform.header.frame_id = 'odom'
         transform.child_frame_id = 'base_footprint'
 
-        # Get original position
-        pos_x = msg.pose.pose.position.x
-        pos_y = msg.pose.pose.position.y
-        pos_z = msg.pose.pose.position.z
+        # Copy position from received odometry
+        transform.transform.translation.x = msg.pose.pose.position.x
+        transform.transform.translation.y = msg.pose.pose.position.y
+        transform.transform.translation.z = msg.pose.pose.position.z
 
-        # Invert X and Y for 180-degree rotation
-        transform.transform.translation.x = -pos_x
-        transform.transform.translation.y = -pos_y
-        transform.transform.translation.z = pos_z
+        # Copy orientation from received odometry
+        transform.transform.rotation = msg.pose.pose.orientation
 
-        # Get original orientation as [w, x, y, z] for transforms3d
-        q_orig = [
-            msg.pose.pose.orientation.w,  # Note: w first for transforms3d
-            msg.pose.pose.orientation.x,
-            msg.pose.pose.orientation.y,
-            msg.pose.pose.orientation.z
-        ]
-
-        # Apply 180-degree rotation around Z-axis
-        # qmult multiplies quaternions
-        q_new = qmult(self.rot_180_z, q_orig)
-
-        # Set the new orientation (convert back to [x, y, z, w] for ROS)
-        transform.transform.rotation.w = q_new[0]
-        transform.transform.rotation.x = q_new[1]
-        transform.transform.rotation.y = q_new[2]
-        transform.transform.rotation.z = q_new[3]
-
+        # Broadcast the transform
         self.tf_broadcaster.sendTransform(transform)
 
 

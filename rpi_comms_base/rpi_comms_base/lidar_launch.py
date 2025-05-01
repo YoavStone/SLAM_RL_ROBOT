@@ -18,6 +18,10 @@ def generate_launch_description():
         package='rplidar_ros',
         executable='rplidar_composition',
         output='screen',
+        remappings=[
+            # Change the output topic from 'scan' to 'scan_not_rotated'
+            ('scan', 'scan_not_rotated')
+        ],
         parameters=[{
             'serial_port': serial_port,
             'frame_id': 'lidar_link',
@@ -53,10 +57,18 @@ def generate_launch_description():
         output='screen',
     )
 
+    laser_scan_rotator_node = Node(
+        package='rpi_comms_base',  # Replace with your actual package name
+        executable='laser_scan_rotator',  # This will come from your setup.py
+        name='laser_scan_rotator',
+        output='screen'
+    )
+
     return LaunchDescription([
         serial_port_arg,
         base_to_body_transform,
         body_to_lidar_transform,
         tf_broadcaster,
+        laser_scan_rotator_node,
         rplidar_node
     ])
