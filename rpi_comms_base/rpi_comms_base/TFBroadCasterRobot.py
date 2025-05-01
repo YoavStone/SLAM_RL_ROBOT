@@ -55,7 +55,7 @@ class TFBroadCasterRobot(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = TFBroadCaster()
+    node = TFBroadCasterRobot()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

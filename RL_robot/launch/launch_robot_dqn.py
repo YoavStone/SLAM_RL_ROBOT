@@ -19,13 +19,6 @@ def generate_launch_description():
         description='Path to a saved model to load.'
     )
 
-    tf_broadcaster_node = Node(
-        package=namePackage,
-        executable='tf_broadcaster',  # This matches the entry_point in setup.py
-        name='tf_broadcaster_node',
-        output='screen'
-    )
-
     # Create node to run pre-trained model (without simulation components)
     dqn_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
@@ -59,7 +52,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        tf_broadcaster_node,
         slam_toolbox_launch,
         rviz,
         model_path_arg,

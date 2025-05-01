@@ -34,18 +34,9 @@ def generate_launch_description():
         arguments=['-d', os.path.join(get_package_share_directory(namePackage), 'rviz', 'physical_robot.rviz')],
     )
 
-    tf_broadcaster_node = Node(
-        package=namePackage,
-        executable='tf_broadcaster',
-        name='tf_broadcaster_node',
-        output='screen'
-    )
-
 
     # empty launch description object
     launchDescriptionObject = LaunchDescription()
-
-    launchDescriptionObject.add_action(tf_broadcaster_node)
 
     launchDescriptionObject.add_action(rviz)
 
