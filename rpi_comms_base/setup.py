@@ -34,6 +34,7 @@ setup(
             'script = rpi_comms_base.script_try:main',
             'control_motors = rpi_comms_base.run_robot_control_node:main',
             'TFBroadCasterRobot = rpi_comms_base.TFBroadCasterRobot:main',
+            'laser_scan_rotator = rpi_comms_base.LaserScanRotator:main',
         ],
     },
 )
