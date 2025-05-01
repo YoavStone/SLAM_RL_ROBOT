@@ -12,6 +12,7 @@ from std_msgs.msg import Empty
 
 from .DQNetwork import DQNetwork
 from .DuelingDQN import DuelingDQN
+from .DuelingDQN_CNN import DuelingDQN_CNN
 from .DQLEnv import DQLEnv
 
 # Hyperparameters
@@ -90,9 +91,13 @@ class DQLAgent(Node):
         # self.q_network = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
         # self.target_net = DQNetwork(self.env.observation_space.shape, self.env.action_space.n)
 
+        # # --- Network Initialization --- for when using normal dueling dqn structure
+        # self.q_network = DuelingDQN(self.env.observation_space.shape, self.env.action_space.n)
+        # self.target_net = DuelingDQN(self.env.observation_space.shape, self.env.action_space.n)
+
         # --- Network Initialization ---
-        self.q_network = DuelingDQN(self.env.observation_space.shape, self.env.action_space.n)
-        self.target_net = DuelingDQN(self.env.observation_space.shape, self.env.action_space.n)
+        self.q_network = DuelingDQN_CNN(self.env.observation_space.shape, self.env.action_space.n)
+        self.target_net = DuelingDQN_CNN(self.env.observation_space.shape, self.env.action_space.n)
 
         # --- Load Pre-trained Model (if specified) ---
         load_path = self.model_path if self.model_path else self.best_model_name  # Try loading best if no specific path given
@@ -122,14 +127,6 @@ class DQLAgent(Node):
                 self.get_logger().info(f"!!**!! Default best model '{potential_best_path}' not found. Starting fresh.")
             else:
                 self.get_logger().info("No model path specified or found. Starting fresh.")
-
-        # Initialize optimizer with starting learning rate
-        self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE_START)
-        # Create LR decay (smooth according to lr_lambda func)
-        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer,
-            lr_lambda=self.lr_lambda
-        )
 
         # Log the learning rate configuration
         self.get_logger().info(f"Learning rate scheduler configured:")
@@ -162,6 +159,14 @@ class DQLAgent(Node):
         self.steps = 0
         self.episode_count = 0  # Start counting episodes from 0
 
+        # Initialize optimizer with starting learning rate
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE_START)
+        # Create LR decay (smooth according to lr_lambda func)
+        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
+            self.optimizer,
+            lr_lambda=self.lr_lambda
+        )
+
         self.get_logger().info(f"DQL Agent initialized successfully in {'LEARNING' if self.learning_mode else 'EXECUTION'} mode.")
         if self.learning_mode and len(self.replay_buffer) < MIN_REPLAY_SIZE:
             self.get_logger().info("Initializing replay buffer...")
@@ -169,13 +174,13 @@ class DQLAgent(Node):
             self.initialize_replay_buffer()
 
     # Lambda function that decays to exactly the target rate and then stays there
-    def lr_lambda(self):
+    def lr_lambda(self, epoch):
         if self.steps >= LEARNING_RATE_DECAY:
             # After reaching decay steps, maintain final rate
             return LEARNING_RATE_END / LEARNING_RATE_START
         else:
             # Linear decay from start to end rate
-            decay_factor = 1.0 - self.step / LEARNING_RATE_DECAY
+            decay_factor = 1.0 - self.steps / LEARNING_RATE_DECAY
             normalized_lr = LEARNING_RATE_START * decay_factor + LEARNING_RATE_END * (1 - decay_factor)
             return normalized_lr / LEARNING_RATE_START
 

@@ -46,9 +46,17 @@ def generate_launch_description():
         arguments=['-0.12', '0', '0.312', '3.14159', '0', '0', 'body_link', 'lidar_link']
     )
 
+    tf_broadcaster = Node(
+        package='rpi_comms_base',
+        executable='TFBroadCasterRobot',
+        name='tf_broadcaster_node',
+        output='screen',
+    )
+
     return LaunchDescription([
         serial_port_arg,
         base_to_body_transform,
         body_to_lidar_transform,
+        tf_broadcaster,
         rplidar_node
     ])

@@ -346,7 +346,7 @@ class GazeboEnv(Node):
     def execute_action(self, action):
         """Execute action by publishing to cmd_vel"""
         cmd = self.action_to_cmd(action)
-        self.cmd_vel_pub.publish(cmd)
+        # self.cmd_vel_pub.publish(cmd)
 
     def get_state(self):
         """Get the current state representation with position converted to grid cell coordinates"""
@@ -359,8 +359,8 @@ class GazeboEnv(Node):
         if self.velocities is None:
             self.velocities = [0.0, 0.0]
 
-        # print("pos: ", self.grid_position)
-        # print("vel: ", self.velocities)
+        print("pos: ", self.grid_position)
+        print("vel: ", self.velocities)
 
         # Return state with grid position
         return self.grid_position + self.velocities + self.measured_distance_to_walls + self.map_processed
