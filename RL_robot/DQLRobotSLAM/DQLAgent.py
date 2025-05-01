@@ -125,18 +125,17 @@ class DQLAgent(Node):
 
         # Initialize optimizer with starting learning rate
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE_START)
-        # Create Exponential decay (smooth)
-        decay_rate = np.log(LEARNING_RATE_END/LEARNING_RATE_START) / LEARNING_RATE_DECAY
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
+        # Create LR decay (smooth according to lr_lambda func)
+        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
             self.optimizer,
-            gamma=np.exp(decay_rate)
+            lr_lambda=self.lr_lambda
         )
 
         # Log the learning rate configuration
         self.get_logger().info(f"Learning rate scheduler configured:")
-        self.get_logger().info(f"  Initial rate: {LEARNING_RATE_START}")
-        self.get_logger().info(f"  Final rate: {LEARNING_RATE_END}")
-        self.get_logger().info(f"  Decay steps: {LEARNING_RATE_DECAY}")
+        self.get_logger().info(f"Initial rate: {LEARNING_RATE_START}")
+        self.get_logger().info(f"Final rate: {LEARNING_RATE_END}")
+        self.get_logger().info(f"Decay steps: {LEARNING_RATE_DECAY}")
 
         # --- Replay Buffer & Reward Tracking ---
         self.replay_buffer = deque(maxlen=BUFFER_SIZE)
@@ -168,6 +167,17 @@ class DQLAgent(Node):
             self.get_logger().info("Initializing replay buffer...")
             # Start buffer initialization immediately if in learning mode
             self.initialize_replay_buffer()
+
+    # Lambda function that decays to exactly the target rate and then stays there
+    def lr_lambda(self):
+        if self.steps >= LEARNING_RATE_DECAY:
+            # After reaching decay steps, maintain final rate
+            return LEARNING_RATE_END / LEARNING_RATE_START
+        else:
+            # Linear decay from start to end rate
+            decay_factor = 1.0 - self.step / LEARNING_RATE_DECAY
+            normalized_lr = LEARNING_RATE_START * decay_factor + LEARNING_RATE_END * (1 - decay_factor)
+            return normalized_lr / LEARNING_RATE_START
 
     def initialize_replay_buffer(self):
         """Fills the replay buffer with initial random experiences."""
