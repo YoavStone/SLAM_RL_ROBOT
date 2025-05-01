@@ -6,12 +6,18 @@ from geometry_msgs.msg import TransformStamped
 import math
 import numpy as np
 from transforms3d.euler import quat2euler, euler2quat
+from transforms3d.quaternions import qmult
 
 
 class TFBroadCasterRobot(Node):
     def __init__(self):
         super().__init__('tf_board_cast_node_for_robot')
         self.tf_broadcaster = TransformBroadcaster(self)
+
+        # Create a rotation quaternion for 180 degrees around Z axis
+        # Order in transforms3d is [w, x, y, z]
+        self.rot_180_z = euler2quat(0, 0, math.pi)
+
         self.odom_subscription = self.create_subscription(
             Odometry,
             'odom',
@@ -25,37 +31,33 @@ class TFBroadCasterRobot(Node):
         transform.header.frame_id = 'odom'
         transform.child_frame_id = 'base_footprint'
 
-        # Invert the X and Y positions (flip 180 degrees)
-        transform.transform.translation.x = -msg.pose.pose.position.x
-        transform.transform.translation.y = -msg.pose.pose.position.y
-        transform.transform.translation.z = msg.pose.pose.position.z
+        # Get original position
+        pos_x = msg.pose.pose.position.x
+        pos_y = msg.pose.pose.position.y
+        pos_z = msg.pose.pose.position.z
 
-        # For orientation, we need to handle it differently
-        # Rotate 180 degrees around the Z axis (invert both x and y)
+        # Invert X and Y for 180-degree rotation
+        transform.transform.translation.x = -pos_x
+        transform.transform.translation.y = -pos_y
+        transform.transform.translation.z = pos_z
+
+        # Get original orientation as [w, x, y, z] for transforms3d
         q_orig = [
+            msg.pose.pose.orientation.w,  # Note: w first for transforms3d
             msg.pose.pose.orientation.x,
             msg.pose.pose.orientation.y,
-            msg.pose.pose.orientation.z,
-            msg.pose.pose.orientation.w
+            msg.pose.pose.orientation.z
         ]
 
-        # This approach inverts the X and Y components of rotation
-        # which effectively produces a 180-degree rotation around Z
-        q_new = [
-            -q_orig[0],  # Invert X
-            -q_orig[1],  # Invert Y
-            q_orig[2],  # Keep Z the same
-            q_orig[3]  # Keep W the same
-        ]
+        # Apply 180-degree rotation around Z-axis
+        # qmult multiplies quaternions
+        q_new = qmult(self.rot_180_z, q_orig)
 
-        # Normalize the quaternion to ensure it remains valid
-        magnitude = math.sqrt(sum(x * x for x in q_new))
-        q_new = [x / magnitude for x in q_new]
-
-        transform.transform.rotation.x = q_new[0]
-        transform.transform.rotation.y = q_new[1]
-        transform.transform.rotation.z = q_new[2]
-        transform.transform.rotation.w = q_new[3]
+        # Set the new orientation (convert back to [x, y, z, w] for ROS)
+        transform.transform.rotation.w = q_new[0]
+        transform.transform.rotation.x = q_new[1]
+        transform.transform.rotation.y = q_new[2]
+        transform.transform.rotation.z = q_new[3]
 
         self.tf_broadcaster.sendTransform(transform)
 
