@@ -24,7 +24,7 @@ class RobotPositionCalculator:
         # Robot pose (x, y, theta)
         self.x = 0.0
         self.y = 0.0
-        self.theta = 0.0
+        self.theta = math.pi
 
     def create_odom_message(self, msg_time):
         # Get current motor positions
