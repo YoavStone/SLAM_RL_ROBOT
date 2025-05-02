@@ -33,7 +33,7 @@ class BaseToRobot(Node):
 
         # Set default velocities
         self.linear_speed = 0.3  # m/s
-        self.angular_speed = 1.5  # rad/s
+        self.angular_speed = 1.2  # rad/s
 
         # Store latest position and orientation
         self.current_x = 0.0

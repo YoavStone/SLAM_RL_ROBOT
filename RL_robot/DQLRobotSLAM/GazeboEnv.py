@@ -13,7 +13,7 @@ from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
-ANGULAR_SPEED = 0.3  # irl: 0.3  # rad/s
+ANGULAR_SPEED = 1.2  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
