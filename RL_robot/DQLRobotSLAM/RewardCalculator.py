@@ -220,8 +220,8 @@ class RewardCalculator:
         # Actually apply the scaling factor to the distance
         adjusted_distance = scan_distance * scale_factor
 
-        # if self.step_counter % 20 == 0:
-        #     print(f"Angle {robot_angle_degrees:.1f}°: {scan_distance:.2f}m -> {adjusted_distance:.2f}m (scale: {scale_factor:.2f})")
+        if self.step_counter % 20 == 0:
+            print(f"Angle {robot_angle_degrees:.1f}°: {scan_distance:.2f}m -> {adjusted_distance:.2f}m (scale: {scale_factor:.2f})")
 
         return adjusted_distance
 
