@@ -19,13 +19,13 @@ from .DQLEnv import DQLEnv
 GAMMA = 0.99
 LEARNING_RATE_START = 2e-4
 LEARNING_RATE_END = 0.5e-4
-LEARNING_RATE_DECAY = 250000
+LEARNING_RATE_DECAY = 350000
 BATCH_SIZE = 64
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
-EPSILON_END = 0.075
-EPSILON_DECAY = 250000  # Steps over which epsilon decays
+EPSILON_END = 0.1
+EPSILON_DECAY = 350000  # Steps over which epsilon decays
 TARGET_UPDATE_FREQ = 2500  # Steps between updating the target network
 
 SAVE_NETWORK_STEP_COUNT_THRESHOLD = 100
