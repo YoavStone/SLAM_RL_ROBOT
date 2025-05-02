@@ -17,18 +17,18 @@ from .DQLEnv import DQLEnv
 
 # Hyperparameters
 GAMMA = 0.99
-LEARNING_RATE_START = 2.5e-4
-LEARNING_RATE_END = 1e-4
-LEARNING_RATE_DECAY = 150000
-BATCH_SIZE = 32
+LEARNING_RATE_START = 2e-4
+LEARNING_RATE_END = 0.5e-4
+LEARNING_RATE_DECAY = 250000
+BATCH_SIZE = 64
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
-EPSILON_END = 0.05
-EPSILON_DECAY = 150000  # Steps over which epsilon decays
-TARGET_UPDATE_FREQ = 1000  # Steps between updating the target network
+EPSILON_END = 0.075
+EPSILON_DECAY = 250000  # Steps over which epsilon decays
+TARGET_UPDATE_FREQ = 2500  # Steps between updating the target network
 
-SAVE_VIDEO_STEP_COUNT_THRESHOLD = 100
+SAVE_NETWORK_STEP_COUNT_THRESHOLD = 100
 
 
 class DQLAgent(Node):
@@ -410,7 +410,7 @@ class DQLAgent(Node):
     def save_models(self):
         """Save current episode model and update best model if applicable"""
         # Only save models after a certain number of episodes
-        if self.episode_count <= SAVE_VIDEO_STEP_COUNT_THRESHOLD:
+        if self.episode_count <= SAVE_NETWORK_STEP_COUNT_THRESHOLD:
             return
 
         if self.episode_count % 10 == 0:

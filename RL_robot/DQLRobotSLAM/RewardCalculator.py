@@ -194,23 +194,23 @@ class RewardCalculator:
         # Determine scaling factor based on the robot-relative angle
         if 330 <= robot_angle_degrees or robot_angle_degrees <= 30:  # Front section (0° ±30°)
             scale_factor = front_scale
-        elif 150 <= robot_angle_degrees <= 210:  # Back section (180° ±30°)
+        elif 160 <= robot_angle_degrees <= 200:  # Back section (180° ±20°)
             scale_factor = back_scale
         else:
             # Side sections
-            if 30 < robot_angle_degrees < 150:  # Right side of robot
+            if 30 < robot_angle_degrees < 160:  # Right side of robot
                 if robot_angle_degrees < 90:  # Front-right quadrant
                     # Interpolate from front to side
                     factor = (robot_angle_degrees - 30) / 60
                     scale_factor = front_scale + (side_scale - front_scale) * factor
                 else:  # Back-right quadrant
                     # Interpolate from side to back
-                    factor = (robot_angle_degrees - 90) / 60
+                    factor = (robot_angle_degrees - 90) / 70
                     scale_factor = side_scale + (back_scale - side_scale) * factor
-            else:  # Left side of robot (210° to 330°)
+            else:  # Left side of robot (200° to 330°)
                 if robot_angle_degrees < 270:  # Back-left quadrant
                     # Interpolate from back to side
-                    factor = (robot_angle_degrees - 210) / 60
+                    factor = (robot_angle_degrees - 200) / 70
                     scale_factor = back_scale - (back_scale - side_scale) * factor
                 else:  # Front-left quadrant
                     # Interpolate from side to front
@@ -220,8 +220,8 @@ class RewardCalculator:
         # Actually apply the scaling factor to the distance
         adjusted_distance = scan_distance * scale_factor
 
-        # if self.step_counter % 20 == 0:
-        #     print(f"Angle {robot_angle_degrees:.1f}°: {scan_distance:.2f}m -> {adjusted_distance:.2f}m (scale: {scale_factor:.2f})")
+        if self.step_counter % 20 == 0:
+            print(f"Angle {robot_angle_degrees:.1f}°: {scan_distance:.2f}m -> {adjusted_distance:.2f}m (scale: {scale_factor:.2f})")
 
         return adjusted_distance
 
@@ -230,16 +230,10 @@ class RewardCalculator:
         Calculate punishment based on adjusted distances to walls
         """
         # Apply distance adjustments based on scan angles
-        robot_angle_degrees = 0
         adjusted_distances = []
         for idx, distance in enumerate(new_dis):
             adjusted = self.scale_distance_by_scan_angle(distance, idx, len(new_dis))
             adjusted_distances.append(adjusted)
-            # log distances and scaling
-            if self.step_counter % 20 == 0:
-                robot_angle_degrees = (360/len(new_dis))*idx
-                scale_factor = adjusted/distance
-                print(f"Angle {robot_angle_degrees:.1f}°: {distance:.2f}m -> {adjusted:.2f}m (scale: {scale_factor:.2f})")
 
         closest = min(adjusted_distances)
         is_terminated = False

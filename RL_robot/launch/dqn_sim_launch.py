@@ -64,13 +64,13 @@ def generate_launch_description():
 
     epsilon_end_arg = DeclareLaunchArgument(
         'epsilon_end',
-        default_value='0.05',
+        default_value='0.075',
         description='Final exploration rate (epsilon) for the agent'
     )
 
     epsilon_decay_arg = DeclareLaunchArgument(
         'epsilon_decay',
-        default_value='150000',
+        default_value='250000',
         description='Number of steps over which epsilon decays from start to end value'
     )
 
