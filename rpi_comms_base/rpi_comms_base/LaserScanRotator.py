@@ -40,18 +40,16 @@ class LaserScanRotator(Node):
         rotated_scan.range_min = msg.range_min
         rotated_scan.range_max = msg.range_max
 
-        # Step 1: Rotate the ranges array by 180 degrees (shift by half the array length)
+        # Rotate the ranges array by 180 degrees (shift by half the array length)
         ranges_length = len(msg.ranges)
         half_length = ranges_length // 2
-        rotated_ranges = msg.ranges[half_length:] + msg.ranges[:half_length]
 
-        # Step 2: Mirror flip the rotated array (reverse the entire array)
-        rotated_scan.ranges = list(reversed(rotated_ranges))
+        # Create a new ranges array that's rotated 180 degrees
+        rotated_scan.ranges = msg.ranges[half_length:] + msg.ranges[:half_length]
 
-        # Do the same for intensities if they exist
+        # If there are intensity values, rotate those too
         if len(msg.intensities) > 0:
-            rotated_intensities = msg.intensities[half_length:] + msg.intensities[:half_length]
-            rotated_scan.intensities = list(reversed(rotated_intensities))
+            rotated_scan.intensities = msg.intensities[half_length:] + msg.intensities[:half_length]
         else:
             rotated_scan.intensities = []
 
