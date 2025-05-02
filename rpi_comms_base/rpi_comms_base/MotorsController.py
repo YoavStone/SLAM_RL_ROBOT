@@ -19,9 +19,9 @@ class MotorsController:
         self.l_motor_desired_speed = 0.0
 
         self.pwm_change_factor = 0.13  # adjust how much the inaccuracy in the speed difference affects the pwm change
-        self.start_from_stop = 0.7
+        self.start_from_stop = 0.9
 
-        self.max_speed = 0.8
+        self.max_pwm = 0.8
 
         self.ticks_per_revolution = ticks_per_revolution
 
@@ -116,8 +116,8 @@ class MotorsController:
         new_pwm_l = current_pwm_l + error_pwm_l
 
         # Apply limits
-        new_pwm_r = min(self.max_speed, new_pwm_r)
-        new_pwm_l = min(self.max_speed, new_pwm_l)
+        new_pwm_r = min(self.max_pwm, new_pwm_r)
+        new_pwm_l = min(self.max_pwm, new_pwm_l)
 
         # Set final PWM values (always positive)
         self.motors_synchronizer.set_pwm(new_pwm_r, new_pwm_l)
