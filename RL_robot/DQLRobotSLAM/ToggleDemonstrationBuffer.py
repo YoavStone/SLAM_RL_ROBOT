@@ -41,31 +41,9 @@ class ToggleDemonstrationBuffer:
         # ROS node will be set later
         self.ros_node = None
 
-    def set_ros_node(self, node):
-        """Set ROS node and create subscribers"""
-        self.ros_node = node
-
-        # Create subscribers
-        self.action_sub = self.ros_node.create_subscription(
-            Int32,
-            '/demo/action',
-            self.action_callback,
-            10
-        )
-
-        self.toggle_sub = self.ros_node.create_subscription(
-            Bool,
-            '/demo/toggle',
-            self.toggle_callback,
-            10
-        )
-
-        self.log("Demo buffer initialized with ROS subscribers")
-
     def action_callback(self, msg):
         """Handle action messages from keyboard node"""
         action = msg.data
-        self.log(f"Received action callback: {msg.data}")
         if action >= 0 and action <= 4 and self.is_recording:
             action_names = ["Stop", "Forward", "Backward", "Turn right", "Turn left"]
             self.log(f'Demo action: {action_names[action]}')
@@ -73,7 +51,6 @@ class ToggleDemonstrationBuffer:
 
     def toggle_callback(self, msg):
         """Handle toggle messages from keyboard node"""
-        self.log(f"Received action callback: {msg.data}")
         if msg.data:
             if self.is_recording:
                 self.log("Stopping demonstration recording")

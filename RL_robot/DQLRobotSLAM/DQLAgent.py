@@ -9,6 +9,8 @@ import time
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty
+from std_msgs.msg import Int32, Bool
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 
 from .DQNetwork import DQNetwork
 from .DuelingDQN import DuelingDQN
@@ -18,12 +20,12 @@ from .ToggleDemonstrationBuffer import ToggleDemonstrationBuffer
 
 # Hyperparameters
 GAMMA = 0.99
-LEARNING_RATE_START = 1e-4
+LEARNING_RATE_START = 2e-4
 LEARNING_RATE_END = 0.5e-4
-LEARNING_RATE_DECAY = 100000
+LEARNING_RATE_DECAY = 250000
 BATCH_SIZE = 64
 BUFFER_SIZE = 50000
-MIN_REPLAY_SIZE = 10  # Minimum experiences in buffer before learning starts
+MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
 EPSILON_END = 0.1
 EPSILON_DECAY = 250000  # Steps over which epsilon decays
@@ -141,7 +143,7 @@ class DQLAgent(Node):
         self.episode_reward = 0.0
 
         # --- Saving Logic ---
-        self.best_episode_reward = 3928.14  # Track the best single episode reward
+        self.best_episode_reward = -float('inf')  # Track the best single episode reward
         self.best_model_dir = os.path.join("src/RL_robot/saved_networks/network_params/")
         self.episode_model_dir = os.path.join("src/RL_robot/saved_networks/episode_network_params/")
         self.best_model_path = os.path.join(self.best_model_dir, self.best_model_name)
@@ -153,20 +155,9 @@ class DQLAgent(Node):
         self.get_logger().info(f"Best: {self.best_model_dir}")
         self.get_logger().info(f"Episodes: {self.episode_model_dir}")
 
-        # --- State for Training/Execution Loop ---
-        self.timer = self.create_timer(0.01, self.timer_callback)  # Timer for the main loop
-        self.training_initialized = False
-        self.current_obs = None
-        self.steps = 0
-        self.episode_count = 531  # Start counting episodes from 0
-
-        # Initialize optimizer with starting learning rate
-        self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE_START)
-        # Create LR decay (smooth according to lr_lambda func)
-        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer,
-            lr_lambda=self.lr_lambda
-        )
+        # so that timer callback doesnt disregard the action and toggle subscriptions
+        self.subscription_callback_group = ReentrantCallbackGroup()
+        self.timer_callback_group = MutuallyExclusiveCallbackGroup()
 
         # buffer for demonstrations of good human state action reward...
         self.demo_buffer = ToggleDemonstrationBuffer(
@@ -176,18 +167,56 @@ class DQLAgent(Node):
         )
         # Set up logger and ROS node connection
         self.demo_buffer.set_logger(self.get_logger())
-        self.demo_buffer.set_ros_node(self)  # Pass self as the ROS node
+        # Create subscribers for demo buffer
+        self.action_sub = self.create_subscription(
+            Int32,
+            '/demo/action',
+            self.action_callback,
+            10,
+            callback_group=self.subscription_callback_group
+        )
+
+        self.toggle_sub = self.create_subscription(
+            Bool,
+            '/demo/toggle',
+            self.toggle_callback,
+            10,
+            callback_group=self.subscription_callback_group
+        )
+
+        self.get_logger().info("Demo buffer initialized with ROS subscribers")
 
         # Print instructions about toggle demo recording
         self.get_logger().info("Press 'p' to toggle demonstration recording mode")
         self.get_logger().info("When in demo mode, use 'w/a/s/d' to control the robot, 'x' to stop, 'p' to exit demo mode")
         self.get_logger().info(f"Auto-timeout for demonstration mode: 5 minutes")
 
+        # --- State for Training/Execution Loop ---
+        self.timer = self.create_timer(0.01, self.timer_callback, callback_group=self.timer_callback_group)  # Timer for the main loop
+        self.training_initialized = False
+        self.current_obs = None
+        self.steps = 0
+        self.episode_count = 0  # Start counting episodes from 0
+
+        # Initialize optimizer with starting learning rate
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE_START)
+        # Create LR decay (smooth according to lr_lambda func)
+        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
+            self.optimizer,
+            lr_lambda=self.lr_lambda
+        )
+
         self.get_logger().info(f"DQL Agent initialized successfully in {'LEARNING' if self.learning_mode else 'EXECUTION'} mode.")
         if self.learning_mode and len(self.replay_buffer) < MIN_REPLAY_SIZE:
             self.get_logger().info("Initializing replay buffer...")
             # Start buffer initialization immediately if in learning mode
             self.initialize_replay_buffer()
+
+    def action_callback(self, msg):
+        self.demo_buffer.action_callback(msg)
+
+    def toggle_callback(self, msg):
+        self.demo_buffer.toggle_callback(msg)
 
     # Lambda function that decays to exactly the target rate and then stays there
     def lr_lambda(self, epoch):
@@ -483,7 +512,5 @@ class DQLAgent(Node):
 
     def cleanup(self):
         """Clean up resources when node is destroyed"""
-        if self.demo_buffer is not None:
-            self.demo_buffer.close()
         if self.env is not None:
             self.env.close()
