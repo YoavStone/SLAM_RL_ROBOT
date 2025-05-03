@@ -125,12 +125,11 @@ class ToggleDemonstrationBuffer:
         # Update episode reward
         self.episode_reward += reward
 
-        # Log current reward
-        self.log(f"Action: {action}, Reward: {reward}, Total: {self.episode_reward:.2f}")
+        # # Log current reward
+        # self.log(f"Action: {action}, Reward: {reward}, Total: {self.episode_reward:.2f}")
 
         # If episode ended, reset the stats
         if done:
-            self.log(f"Episode complete with reward: {self.episode_reward:.2f}")
             self.episode_reward = 0.0
 
     def stop_recording(self):
