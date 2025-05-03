@@ -114,7 +114,7 @@ class DQLAgent(Node):
             try:
                 self.q_network.load_state_dict(torch.load(effective_load_path))
                 self.target_net.load_state_dict(self.q_network.state_dict())  # Sync target net
-                self.get_logger().info(f"✅ Successfully loaded model from {effective_load_path}")
+                self.get_logger().info(f"**--** Successfully loaded model from {effective_load_path}")
             except Exception as e:
                 self.get_logger().error(f"!!**!! Failed to load model from {effective_load_path}: {e}. Starting fresh.")
                 # Ensure target net is synced with the randomly initialized q_network
@@ -149,8 +149,8 @@ class DQLAgent(Node):
         os.makedirs(self.best_model_dir, exist_ok=True)
         os.makedirs(self.episode_model_dir, exist_ok=True)
         self.get_logger().info(f"Models will be saved to:")
-        self.get_logger().info(f"  Best: {self.best_model_dir}")
-        self.get_logger().info(f"  Episodes: {self.episode_model_dir}")
+        self.get_logger().info(f"Best: {self.best_model_dir}")
+        self.get_logger().info(f"Episodes: {self.episode_model_dir}")
 
         # --- State for Training/Execution Loop ---
         self.timer = self.create_timer(0.01, self.timer_callback)  # Timer for the main loop
