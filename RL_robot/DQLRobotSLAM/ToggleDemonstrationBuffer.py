@@ -1,3 +1,5 @@
+import os
+import pickle
 import random
 from collections import deque
 import numpy as np
@@ -11,10 +13,13 @@ class ToggleDemonstrationBuffer:
     Uses ROS topics for control instead of direct keyboard input.
     """
 
-    def __init__(self, max_demos=50000, demo_batch_ratio=0.3, auto_timeout=300):
+    def __init__(self, max_demos=50000, demo_batch_ratio=0.3, auto_timeout=300, save_path="src/RL_robot/saved_networks/saved_demonstrations/demo_buffer.pkl"):
         self.max_demos = max_demos
         self.demo_batch_ratio = demo_batch_ratio
         self.auto_timeout = auto_timeout
+        self.save_path = save_path
+
+        os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
 
         # Buffer to store demonstration transitions
         self.demo_buffer = deque(maxlen=max_demos)
@@ -38,8 +43,93 @@ class ToggleDemonstrationBuffer:
         self.logger = None
         self.current_state = None
 
-        # ROS node will be set later
-        self.ros_node = None
+        self.load_demonstrations()
+
+    def load_demonstrations(self, custom_path=None):
+        """Load demonstration buffer from file if it exists
+
+        Args:
+            custom_path: Optional path to load from. If None, uses default save_path.
+
+        Returns:
+            bool: True if demonstrations were successfully loaded, False otherwise
+        """
+        path_to_use = custom_path if custom_path else self.save_path
+
+        try:
+            if os.path.exists(path_to_use):
+                with open(path_to_use, 'rb') as f:
+                    loaded_buffer = pickle.load(f)
+
+                    # Convert to a deque with maxlen if it's not already
+                    if isinstance(loaded_buffer, deque) and hasattr(loaded_buffer,
+                                                                    'maxlen') and loaded_buffer.maxlen == self.max_demos:
+                        self.demo_buffer = loaded_buffer
+                    else:
+                        # In case the loaded buffer is not a deque or has different maxlen
+                        self.demo_buffer = deque(loaded_buffer, maxlen=self.max_demos)
+
+                    self.log(f"Loaded {len(self.demo_buffer)} demonstrations from {path_to_use}")
+                    return True
+            else:
+                self.log(f"No demonstration file found at {path_to_use}. Starting with empty buffer.")
+                return False
+        except Exception as e:
+            self.log(f"Failed to load demonstrations: {e}. Starting with empty buffer.")
+            return False
+
+    def save_demonstrations(self, custom_path=None):
+        """Save current demonstration buffer to file
+
+        Args:
+            custom_path: Optional path to save to. If None, uses default save_path.
+
+        Returns:
+            bool: True if demonstrations were successfully saved, False otherwise
+        """
+        if len(self.demo_buffer) == 0:
+            self.log("No demonstrations to save.")
+            return False
+
+        path_to_use = custom_path if custom_path else self.save_path
+
+        try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(path_to_use), exist_ok=True)
+
+            with open(path_to_use, 'wb') as f:
+                pickle.dump(self.demo_buffer, f)
+
+            self.log(f"Saved {len(self.demo_buffer)} demonstrations to {path_to_use}")
+            return True
+        except Exception as e:
+            self.log(f"Failed to save demonstrations: {e}")
+            return False
+
+    def toggle_callback(self, msg):
+        """Handle toggle messages from keyboard node"""
+        if msg.data:
+            if self.is_recording:
+                self.log("Stopping demonstration recording")
+                self.stop_recording()
+                # Save demonstrations when stopping recording
+                self.save_demonstrations()
+            else:
+                self.log("Starting demonstration recording")
+                self.start_recording()
+
+    def check_for_toggle(self):
+        """Check if timeout has been reached"""
+        # Check for timeout if recording
+        if self.is_recording and self.demo_start_time is not None:
+            current_time = time.time()
+            if current_time - self.demo_start_time > self.auto_timeout:
+                self.log(f"Demonstration mode auto-timeout after {self.auto_timeout} seconds")
+                self.stop_recording()
+                # Save demonstrations when timeout occurs
+                self.save_demonstrations()  # Added this line
+
+        return self.is_recording
 
     def action_callback(self, msg):
         """Handle action messages from keyboard node"""
@@ -48,16 +138,6 @@ class ToggleDemonstrationBuffer:
             # action_names = ["Stop", "Forward", "Backward", "Turn right", "Turn left"]
             # self.log(f'Demo action: {action_names[action]}')
             self.pending_action = action
-
-    def toggle_callback(self, msg):
-        """Handle toggle messages from keyboard node"""
-        if msg.data:
-            if self.is_recording:
-                self.log("Stopping demonstration recording")
-                self.stop_recording()
-            else:
-                self.log("Starting demonstration recording")
-                self.start_recording()
 
     def set_logger(self, logger):
         """Set a logger for messages"""
@@ -69,17 +149,6 @@ class ToggleDemonstrationBuffer:
             self.logger.info(message)
         else:
             print(message)
-
-    def check_for_toggle(self):
-        """Check if timeout has been reached"""
-        # Check for timeout if recording
-        if self.is_recording and self.demo_start_time is not None:
-            current_time = time.time()
-            if current_time - self.demo_start_time > self.auto_timeout:
-                self.log(f"Demonstration mode auto-timeout after {self.auto_timeout} seconds")
-                self.stop_recording()
-
-        return self.is_recording
 
     def get_action(self):
         """Get the current action (or default to stop)"""

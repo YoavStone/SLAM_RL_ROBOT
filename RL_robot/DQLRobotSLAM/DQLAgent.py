@@ -163,7 +163,8 @@ class DQLAgent(Node):
         self.demo_buffer = ToggleDemonstrationBuffer(
             max_demos=50000,
             demo_batch_ratio=0.3,
-            auto_timeout=300  # 5 minutes auto-timeout
+            auto_timeout=300,  # 5 minutes auto-timeout
+            save_path="src/RL_robot/saved_networks/saved_demonstrations/demo_buffer.pkl"
         )
         # Set up logger and ROS node connection
         self.demo_buffer.set_logger(self.get_logger())
@@ -399,9 +400,10 @@ class DQLAgent(Node):
 
     def handle_episode_end(self):
         """Handle the end of a training episode"""
-        self.episode_count += 1
-        self.reward_buffer.append(self.episode_reward)  # Add final reward to buffer for avg calculation
-        mean_reward_100 = np.mean(self.reward_buffer)
+        if not self.demo_buffer.check_for_toggle():
+            self.episode_count += 1
+            self.reward_buffer.append(self.episode_reward)  # Add final reward to buffer for avg calculation
+            mean_reward_100 = np.mean(self.reward_buffer)
 
         # log episode details
         current_lr = self.optimizer.param_groups[0]['lr']
@@ -481,6 +483,9 @@ class DQLAgent(Node):
         """Save current episode model and update best model if applicable"""
         # Only save models after a certain number of episodes
         if self.episode_count <= SAVE_NETWORK_STEP_COUNT_THRESHOLD:
+            return
+
+        if self.demo_buffer.check_for_toggle():
             return
 
         if self.episode_count % 10 == 0:
