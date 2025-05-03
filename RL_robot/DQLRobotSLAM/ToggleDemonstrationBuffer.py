@@ -45,8 +45,8 @@ class ToggleDemonstrationBuffer:
         """Handle action messages from keyboard node"""
         action = msg.data
         if action >= 0 and action <= 4 and self.is_recording:
-            action_names = ["Stop", "Forward", "Backward", "Turn right", "Turn left"]
-            self.log(f'Demo action: {action_names[action]}')
+            # action_names = ["Stop", "Forward", "Backward", "Turn right", "Turn left"]
+            # self.log(f'Demo action: {action_names[action]}')
             self.pending_action = action
 
     def toggle_callback(self, msg):
