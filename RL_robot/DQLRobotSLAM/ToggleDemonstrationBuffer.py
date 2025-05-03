@@ -11,7 +11,6 @@ import time
 class ToggleDemonstrationBuffer:
     """
     Buffer for storing and using human demonstrations for improved DQN learning.
-    Uses a dedicated thread for keyboard input.
     """
 
     def __init__(self, max_demos=50000, demo_batch_ratio=0.3, auto_timeout=300):
@@ -39,8 +38,9 @@ class ToggleDemonstrationBuffer:
 
         # For logging
         self.logger = None
+        self.current_state = None
 
-        # Start keyboard thread
+        # Start keyboard thread - identical to BaseToRobot
         self.running = True
         self.thread = threading.Thread(target=self.read_keyboard_input)
         self.thread.daemon = True
@@ -58,34 +58,31 @@ class ToggleDemonstrationBuffer:
             print(message)
 
     def read_keyboard_input(self):
-        """Thread function to read keyboard input"""
+        """Thread function to read keyboard input - identical to BaseToRobot"""
+        # Save terminal settings
+        old_settings = termios.tcgetattr(sys.stdin)
         try:
-            # Save terminal settings
-            old_settings = termios.tcgetattr(sys.stdin)
-            try:
-                # Set terminal to raw mode
-                tty.setraw(sys.stdin.fileno())
-                while self.running:
-                    # Read a single character
-                    key = sys.stdin.read(1)
-                    # Restore terminal settings for logging
-                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-                    # Process the key
-                    self.process_key(key)
-
-                    # Set terminal back to raw mode
-                    tty.setraw(sys.stdin.fileno())
-
-                    # Brief pause to prevent excessive CPU usage
-                    time.sleep(0.1)
-            except Exception as e:
-                self.log(f'Error reading keyboard input: {e}')
-            finally:
-                # Restore terminal settings
+            # Set terminal to raw mode
+            tty.setraw(sys.stdin.fileno())
+            while self.running:
+                # Read a single character
+                key = sys.stdin.read(1)
+                # Restore terminal settings for logging
                 termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+                # Process the key
+                self.process_key(key)
+
+                # Set terminal back to raw mode for next iteration
+                tty.setraw(sys.stdin.fileno())
+
+                # Brief pause to prevent excessive CPU usage
+                time.sleep(0.1)
         except Exception as e:
-            self.log(f"Error setting up terminal: {e}")
+            self.log(f'Error reading keyboard input: {e}')
+        finally:
+            # Restore terminal settings
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
     def process_key(self, key):
         """Process a keyboard key press"""
@@ -122,7 +119,7 @@ class ToggleDemonstrationBuffer:
                 self.pending_action = action
 
     def check_for_toggle(self):
-        """Check if recording mode needs to be toggled or timed out"""
+        """Check if timeout has been reached"""
         # Check for timeout if recording
         if self.is_recording and self.demo_start_time is not None:
             current_time = time.time()
