@@ -18,12 +18,12 @@ from .ToggleDemonstrationBuffer import ToggleDemonstrationBuffer
 
 # Hyperparameters
 GAMMA = 0.99
-LEARNING_RATE_START = 2e-4
+LEARNING_RATE_START = 1e-4
 LEARNING_RATE_END = 0.5e-4
-LEARNING_RATE_DECAY = 250000
+LEARNING_RATE_DECAY = 100000
 BATCH_SIZE = 64
 BUFFER_SIZE = 50000
-MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
+MIN_REPLAY_SIZE = 10  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
 EPSILON_END = 0.1
 EPSILON_DECAY = 250000  # Steps over which epsilon decays
@@ -141,7 +141,7 @@ class DQLAgent(Node):
         self.episode_reward = 0.0
 
         # --- Saving Logic ---
-        self.best_episode_reward = -float('inf')  # Track the best single episode reward
+        self.best_episode_reward = 3928.14  # Track the best single episode reward
         self.best_model_dir = os.path.join("src/RL_robot/saved_networks/network_params/")
         self.episode_model_dir = os.path.join("src/RL_robot/saved_networks/episode_network_params/")
         self.best_model_path = os.path.join(self.best_model_dir, self.best_model_name)
@@ -158,7 +158,7 @@ class DQLAgent(Node):
         self.training_initialized = False
         self.current_obs = None
         self.steps = 0
-        self.episode_count = 0  # Start counting episodes from 0
+        self.episode_count = 531  # Start counting episodes from 0
 
         # Initialize optimizer with starting learning rate
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=LEARNING_RATE_START)
@@ -174,8 +174,9 @@ class DQLAgent(Node):
             demo_batch_ratio=0.3,
             auto_timeout=300  # 5 minutes auto-timeout
         )
-        # Set up logger and cmd_vel_publisher
+        # Set up logger and ROS node connection
         self.demo_buffer.set_logger(self.get_logger())
+        self.demo_buffer.set_ros_node(self)  # Pass self as the ROS node
 
         # Print instructions about toggle demo recording
         self.get_logger().info("Press 'p' to toggle demonstration recording mode")

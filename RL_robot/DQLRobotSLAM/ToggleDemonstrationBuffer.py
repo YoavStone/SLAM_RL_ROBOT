@@ -1,16 +1,14 @@
 import random
 from collections import deque
 import numpy as np
-import sys
-import termios
-import tty
-import threading
 import time
+from std_msgs.msg import Int32, Bool
 
 
 class ToggleDemonstrationBuffer:
     """
     Buffer for storing and using human demonstrations for improved DQN learning.
+    Uses ROS topics for control instead of direct keyboard input.
     """
 
     def __init__(self, max_demos=50000, demo_batch_ratio=0.3, auto_timeout=300):
@@ -40,11 +38,49 @@ class ToggleDemonstrationBuffer:
         self.logger = None
         self.current_state = None
 
-        # Start keyboard thread - identical to BaseToRobot
-        self.running = True
-        self.thread = threading.Thread(target=self.read_keyboard_input)
-        self.thread.daemon = True
-        self.thread.start()
+        # ROS node will be set later
+        self.ros_node = None
+
+    def set_ros_node(self, node):
+        """Set ROS node and create subscribers"""
+        self.ros_node = node
+
+        # Create subscribers
+        self.action_sub = self.ros_node.create_subscription(
+            Int32,
+            '/demo/action',
+            self.action_callback,
+            10
+        )
+
+        self.toggle_sub = self.ros_node.create_subscription(
+            Bool,
+            '/demo/toggle',
+            self.toggle_callback,
+            10
+        )
+
+        self.log("Demo buffer initialized with ROS subscribers")
+
+    def action_callback(self, msg):
+        """Handle action messages from keyboard node"""
+        action = msg.data
+        self.log(f"Received action callback: {msg.data}")
+        if action >= 0 and action <= 4 and self.is_recording:
+            action_names = ["Stop", "Forward", "Backward", "Turn right", "Turn left"]
+            self.log(f'Demo action: {action_names[action]}')
+            self.pending_action = action
+
+    def toggle_callback(self, msg):
+        """Handle toggle messages from keyboard node"""
+        self.log(f"Received action callback: {msg.data}")
+        if msg.data:
+            if self.is_recording:
+                self.log("Stopping demonstration recording")
+                self.stop_recording()
+            else:
+                self.log("Starting demonstration recording")
+                self.start_recording()
 
     def set_logger(self, logger):
         """Set a logger for messages"""
@@ -57,67 +93,6 @@ class ToggleDemonstrationBuffer:
         else:
             print(message)
 
-    def read_keyboard_input(self):
-        """Thread function to read keyboard input - identical to BaseToRobot"""
-        # Save terminal settings
-        old_settings = termios.tcgetattr(sys.stdin)
-        try:
-            # Set terminal to raw mode
-            tty.setraw(sys.stdin.fileno())
-            while self.running:
-                # Read a single character
-                key = sys.stdin.read(1)
-                # Restore terminal settings for logging
-                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-                # Process the key
-                self.process_key(key)
-
-                # Set terminal back to raw mode for next iteration
-                tty.setraw(sys.stdin.fileno())
-
-                # Brief pause to prevent excessive CPU usage
-                time.sleep(0.1)
-        except Exception as e:
-            self.log(f'Error reading keyboard input: {e}')
-        finally:
-            # Restore terminal settings
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-    def process_key(self, key):
-        """Process a keyboard key press"""
-        if key == 'p':
-            # Toggle recording mode
-            if self.is_recording:
-                self.log("Key 'p' pressed - stopping recording")
-                self.stop_recording()
-            else:
-                self.log("Key 'p' pressed - starting recording")
-                self.start_recording()
-
-        # Other keys only processed during recording
-        elif self.is_recording:
-            action = None
-
-            if key == 'w':
-                action = 1  # Forward
-                self.log('Moving forward')
-            elif key == 's':
-                action = 2  # Backward
-                self.log('Moving backward')
-            elif key == 'd':
-                action = 3  # Turn right
-                self.log('Turning right')
-            elif key == 'a':
-                action = 4  # Turn left
-                self.log('Turning left')
-            elif key == 'x':
-                action = 0  # Stop
-                self.log('Stopping')
-
-            if action is not None:
-                self.pending_action = action
-
     def check_for_toggle(self):
         """Check if timeout has been reached"""
         # Check for timeout if recording
@@ -127,7 +102,6 @@ class ToggleDemonstrationBuffer:
                 self.log(f"Demonstration mode auto-timeout after {self.auto_timeout} seconds")
                 self.stop_recording()
 
-        # Return current recording state
         return self.is_recording
 
     def get_action(self):
@@ -154,7 +128,7 @@ class ToggleDemonstrationBuffer:
         self.demo_start_time = time.time()
 
         self.log(f"Started demonstration recording. Auto-timeout in {self.auto_timeout} seconds.")
-        self.log("Use WASD to control, X to stop, P to toggle back to AI control.")
+        self.log("Use WASD keys to control from the keyboard node")
 
         # Reset pending action
         self.pending_action = None
@@ -225,9 +199,7 @@ class ToggleDemonstrationBuffer:
 
         # Log the current ratio (occasionally)
         if random.random() < 0.01:  # Log approximately once every 100 calls
-            if self.logger:
-                self.logger.info(
-                    f"Demo ratio: {adaptive_ratio:.2f}, Demo: {demo_batch_size}, Replay: {replay_batch_size}")
+            self.log(f"Demo ratio: {adaptive_ratio:.2f}, Demo: {demo_batch_size}, Replay: {replay_batch_size}")
 
         # Sample from both buffers
         replay_transitions = random.sample(replay_buffer, replay_batch_size)
@@ -244,10 +216,3 @@ class ToggleDemonstrationBuffer:
         next_obs_batch = np.array([t[4] for t in combined_transitions], dtype=np.float32)
 
         return obs_batch, act_batch, rew_batch, done_batch, next_obs_batch
-
-    def close(self):
-        """Clean up resources"""
-        self.running = False
-        # Wait briefly for thread to finish
-        if hasattr(self, 'thread') and self.thread.is_alive():
-            self.thread.join(timeout=1.0)
