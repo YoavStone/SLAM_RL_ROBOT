@@ -25,7 +25,6 @@ class WallFollower(Node):
         self.turn_delay = 0.02  # sleep for more continues actions
         self.forward_delay = 0.25  # sleep for more continues actions
 
-
     def listener_callback(self, msg):
         self.process_laser_scan(msg)
         self.follow_wall()
@@ -35,12 +34,13 @@ class WallFollower(Node):
         num_ranges = len(ranges)
 
         print(num_ranges)
+        circle_size = int(num_ranges/360)
 
         # Define regions for front, left, and right
         # Front is now centered at index 0, spanning +/-35 degrees
-        front_indices = list(range(num_ranges - 35*2, num_ranges)) + list(range(0, 35*2 + 1))
-        right_indices = range(num_ranges - 35*2 - 60*2, num_ranges - 35*2)  # right 60 degrees
-        left_indices = range(35*2 + 1, 35*2 + 60*2 + 1)  # left 60 degrees
+        front_indices = list(range(num_ranges - 35*circle_size, num_ranges)) + list(range(0, 35*circle_size + 1))
+        right_indices = range(num_ranges - 35*circle_size - 60*circle_size, num_ranges - 35*circle_size)  # right 60 degrees
+        left_indices = range(35*circle_size + 1, 35*circle_size + 60*circle_size + 1)  # left 60 degrees
 
         # Calculate minimum distances in each region
         self.dist_front_wall = min([ranges[i] for i in front_indices if not math.isinf(ranges[i])], default=float('inf'))
