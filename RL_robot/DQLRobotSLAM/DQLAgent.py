@@ -9,23 +9,26 @@ import time
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty
+from std_msgs.msg import Int32, Bool
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 
 from .DQNetwork import DQNetwork
 from .DuelingDQN import DuelingDQN
 from .DuelingDQN_CNN import DuelingDQN_CNN
 from .DQLEnv import DQLEnv
+from .ToggleDemonstrationBuffer import ToggleDemonstrationBuffer
 
 # Hyperparameters
 GAMMA = 0.99
 LEARNING_RATE_START = 2e-4
 LEARNING_RATE_END = 0.5e-4
-LEARNING_RATE_DECAY = 350000
+LEARNING_RATE_DECAY = 250000
 BATCH_SIZE = 64
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
-EPSILON_END = 0.1
-EPSILON_DECAY = 350000  # Steps over which epsilon decays
+EPSILON_END = 0.05
+EPSILON_DECAY = 250000  # Steps over which epsilon decays
 TARGET_UPDATE_FREQ = 2500  # Steps between updating the target network
 
 SAVE_NETWORK_STEP_COUNT_THRESHOLD = 100
@@ -152,8 +155,45 @@ class DQLAgent(Node):
         self.get_logger().info(f"Best: {self.best_model_dir}")
         self.get_logger().info(f"Episodes: {self.episode_model_dir}")
 
+        # so that timer callback doesnt disregard the action and toggle subscriptions
+        self.subscription_callback_group = ReentrantCallbackGroup()
+        self.timer_callback_group = MutuallyExclusiveCallbackGroup()
+
+        # buffer for demonstrations of good human state action reward...
+        self.demo_buffer = ToggleDemonstrationBuffer(
+            max_demos=50000,
+            demo_batch_ratio=0.3,
+            auto_timeout=300,  # 5 minutes auto-timeout
+            save_path="src/RL_robot/saved_networks/saved_demonstrations/demo_buffer.pkl"
+        )
+        # Set up logger and ROS node connection
+        self.demo_buffer.set_logger(self.get_logger())
+        # Create subscribers for demo buffer
+        self.action_sub = self.create_subscription(
+            Int32,
+            '/demo/action',
+            self.action_callback,
+            10,
+            callback_group=self.subscription_callback_group
+        )
+
+        self.toggle_sub = self.create_subscription(
+            Bool,
+            '/demo/toggle',
+            self.toggle_callback,
+            10,
+            callback_group=self.subscription_callback_group
+        )
+
+        self.get_logger().info("Demo buffer initialized with ROS subscribers")
+
+        # Print instructions about toggle demo recording
+        self.get_logger().info("Press 'p' to toggle demonstration recording mode")
+        self.get_logger().info("When in demo mode, use 'w/a/s/d' to control the robot, 'x' to stop, 'p' to exit demo mode")
+        self.get_logger().info(f"Auto-timeout for demonstration mode: 5 minutes")
+
         # --- State for Training/Execution Loop ---
-        self.timer = self.create_timer(0.01, self.timer_callback)  # Timer for the main loop
+        self.timer = self.create_timer(0.01, self.timer_callback, callback_group=self.timer_callback_group)  # Timer for the main loop
         self.training_initialized = False
         self.current_obs = None
         self.steps = 0
@@ -172,6 +212,12 @@ class DQLAgent(Node):
             self.get_logger().info("Initializing replay buffer...")
             # Start buffer initialization immediately if in learning mode
             self.initialize_replay_buffer()
+
+    def action_callback(self, msg):
+        self.demo_buffer.action_callback(msg)
+
+    def toggle_callback(self, msg):
+        self.demo_buffer.toggle_callback(msg)
 
     # Lambda function that decays to exactly the target rate and then stays there
     def lr_lambda(self, epoch):
@@ -254,20 +300,29 @@ class DQLAgent(Node):
         """Executes one step of interaction and learning."""
         # If current_obs is None, we need to reset or initialize
         if self.current_obs is None:
-            self.get_logger().info("Initializing/resetting observation for training")
             self.current_obs, _ = self.env.reset()
             if self.current_obs is None:
                 self.get_logger().error("Failed to get observation after reset in train_step")
                 return
             self.episode_reward = 0.0
 
-        # --- Action Selection (Epsilon-Greedy) ---
-        epsilon = np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end])
+        # Update the current state in the demo buffer
+        self.demo_buffer.set_current_state(self.current_obs)
 
-        if random.random() < epsilon:
-            action = self.env.action_space.sample()  # Explore
+        # Check if user has toggled demonstration mode
+        is_demo_mode = self.demo_buffer.check_for_toggle()
+
+        # Action selection based on mode
+        if is_demo_mode:
+            # Human demonstration mode - get action from keyboard
+            action = self.demo_buffer.get_action()
         else:
-            action = self.q_network.act(self.current_obs)  # Exploit
+            # AI control mode - epsilon-greedy selection
+            epsilon = np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end])
+            if random.random() < epsilon:
+                action = self.env.action_space.sample()  # Explore
+            else:
+                action = self.q_network.act(self.current_obs)  # Exploit
 
         # --- Environment Step ---
         new_obs, reward, terminated, truncated, _ = self.env.step(action)
@@ -279,12 +334,18 @@ class DQLAgent(Node):
             self.current_obs, _ = self.env.reset()
             return  # Skip this step
 
-        # --- Store Experience ---
-        # Ensure observations are numpy arrays
+        # Process the transition based on mode
         current_obs_np = np.array(self.current_obs, dtype=np.float32)
         new_obs_np = np.array(new_obs, dtype=np.float32)
-        self.replay_buffer.append((current_obs_np, action, reward, is_done, new_obs_np))
 
+        if is_demo_mode:
+            # In demo mode, record the transition in the demo buffer
+            self.demo_buffer.add_transition(current_obs_np, action, reward, new_obs_np, is_done)
+        else:
+            # In normal mode, store in replay buffer
+            self.replay_buffer.append((current_obs_np, action, reward, is_done, new_obs_np))
+
+        # Update current state and reward
         self.current_obs = new_obs
         self.episode_reward += reward
 
@@ -292,15 +353,18 @@ class DQLAgent(Node):
         if is_done:
             self.handle_episode_end()
         else:
-            # Learning step
-            self.learn_step()
+            # Learning step (only in normal mode)
+            if not is_demo_mode:
+                self.learn_step()
 
-            # Update Target Network
-            if self.steps % TARGET_UPDATE_FREQ == 0 and self.steps > 0:
-                self.target_net.load_state_dict(self.q_network.state_dict())
-                self.get_logger().info(f"**--** Updated target network at step {self.steps}")
+                # Update Target Network
+                if self.steps % TARGET_UPDATE_FREQ == 0 and self.steps > 0:
+                    self.target_net.load_state_dict(self.q_network.state_dict())
+                    self.get_logger().info(f"**--** Updated target network at step {self.steps}")
 
-        self.steps += 1
+        # Only increment steps in normal mode
+        if not is_demo_mode:
+            self.steps += 1
 
     def execute_step(self):
         """Executes the learned policy without exploration or learning."""
@@ -336,12 +400,20 @@ class DQLAgent(Node):
 
     def handle_episode_end(self):
         """Handle the end of a training episode"""
-        self.episode_count += 1
-        self.reward_buffer.append(self.episode_reward)  # Add final reward to buffer for avg calculation
-        mean_reward_100 = np.mean(self.reward_buffer)
+        mean_reward_100 = 0.0  # Initialize with a default value
 
-        # log episode details
-        current_lr = self.optimizer.param_groups[0]['lr']
+        if not self.demo_buffer.check_for_toggle():
+            self.episode_count += 1
+            if self.reward_buffer is not None:  # Add null check
+                self.reward_buffer.append(self.episode_reward)
+                if len(self.reward_buffer) > 0:  # Add size check
+                    mean_reward_100 = np.mean(self.reward_buffer)
+
+        # Log episode details
+        current_lr = 0.0
+        if self.optimizer and hasattr(self.optimizer, 'param_groups') and len(self.optimizer.param_groups) > 0:
+            current_lr = self.optimizer.param_groups[0]['lr']
+
         self.get_logger().info(
             f"--- Episode {self.episode_count} Finished --- \n"
             f"Reward: {self.episode_reward:.2f} | Avg Reward (Last 100): {mean_reward_100:.2f} \n"
@@ -354,26 +426,36 @@ class DQLAgent(Node):
         self.save_models()
 
         # Reset for next episode
-        self.current_obs, _ = self.env.reset()
-        if self.current_obs is None:
-            self.get_logger().error("Failed to reset environment after episode end!")
-            return
-        self.episode_reward = 0.0  # Reset episode reward
+        try:
+            self.current_obs, _ = self.env.reset()
+            if self.current_obs is None:
+                self.get_logger().error("Failed to reset environment after episode end!")
+                return
+            self.episode_reward = 0.0  # Reset episode reward
+        except Exception as e:
+            self.get_logger().error(f"Error during environment reset: {e}")
 
     def learn_step(self):
         """Performs a gradient descent step based on a batch of experiences."""
-        # Only learn if buffer has enough samples and we are in learning mode
-        if len(self.replay_buffer) < BATCH_SIZE or not self.learning_mode:
+        # Only learn if buffer has enough samples
+        if len(self.replay_buffer) < BATCH_SIZE:
             return
 
-        # Sample batch
-        transitions = random.sample(self.replay_buffer, BATCH_SIZE)
-        # Unpack and convert transitions using list comprehensions for clarity
-        obs_batch = np.array([t[0] for t in transitions], dtype=np.float32)
-        act_batch = np.array([t[1] for t in transitions], dtype=np.int64)
-        rew_batch = np.array([t[2] for t in transitions], dtype=np.float32)
-        done_batch = np.array([t[3] for t in transitions], dtype=np.float32)  # Use float for multiplication later
-        next_obs_batch = np.array([t[4] for t in transitions], dtype=np.float32)
+        # Check if we should use demonstration data
+        mixed_batch = self.demo_buffer.get_mixed_batch(self.replay_buffer, BATCH_SIZE)
+
+        if mixed_batch is not None:
+            # Use mixed batch from demonstrations and replay buffer
+            obs_batch, act_batch, rew_batch, done_batch, next_obs_batch = mixed_batch
+        else:
+            # Sample from replay buffer only
+            transitions = random.sample(self.replay_buffer, BATCH_SIZE)
+            # Unpack and convert transitions
+            obs_batch = np.array([t[0] for t in transitions], dtype=np.float32)
+            act_batch = np.array([t[1] for t in transitions], dtype=np.int64)
+            rew_batch = np.array([t[2] for t in transitions], dtype=np.float32)
+            done_batch = np.array([t[3] for t in transitions], dtype=np.float32)
+            next_obs_batch = np.array([t[4] for t in transitions], dtype=np.float32)
 
         obs_t = torch.as_tensor(obs_batch)
         acts_t = torch.as_tensor(act_batch).unsqueeze(-1)  # Shape: [batch_size, 1]
@@ -413,6 +495,9 @@ class DQLAgent(Node):
         if self.episode_count <= SAVE_NETWORK_STEP_COUNT_THRESHOLD:
             return
 
+        if self.demo_buffer.check_for_toggle():
+            return
+
         if self.episode_count % 10 == 0:
             try:
                 # Save Current Episode Model
@@ -439,3 +524,8 @@ class DQLAgent(Node):
                 )
             except Exception as e:
                 self.get_logger().error(f"🔥 Failed to save new best model: {e}")
+
+    def cleanup(self):
+        """Clean up resources when node is destroyed"""
+        if self.env is not None:
+            self.env.close()

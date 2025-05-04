@@ -19,7 +19,7 @@ def main(args=None):
         agent_node.destroy_node()
         rclpy.shutdown()
 
-    return 0
+        return 0
 
 
 if __name__ == "__main__":

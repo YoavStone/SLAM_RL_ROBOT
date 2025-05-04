@@ -83,7 +83,9 @@ setup(
             'follow_wall = RL_robot.follow_left_wall:main',
 
             'cart_pole_dqn_agent = CartPoleExample.run_dqn_agentTRY:main',
-            'slam_robot_dqn_agent = DQLRobotSLAM.run_dqn_agent:main'
+            'slam_robot_dqn_agent = DQLRobotSLAM.run_dqn_agent:main',
+
+            'keyboard_control_node = DQLRobotSLAM.KeyboardControlNode:main'
         ],
     },
 )

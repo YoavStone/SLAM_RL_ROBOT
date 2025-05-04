@@ -13,18 +13,17 @@ class WallFollower(Node):
 
         self.publisher_ = self.create_publisher(Twist, '/cmd_vel', 10)
         self.subscription_ = self.create_subscription(LaserScan, '/scan', self.listener_callback, 10)
-        self.subscription_  # prevent unused variable warning
 
         self.desired_distance = 0.6  # distance from the wall
         self.forward_speed = 0.3  # 0.3 for normal speed
-        self.angular_speed = 0.6  # 0.6 for normal speed
-        self.region_front = 1.0
-        self.region_left = 1.0
-        self.region_right = 1.0
-        self.error_from_wall = 0.45
+        self.angular_speed = 1.2  # 1.2 for normal speed
+        self.dist_front_wall = 1.0
+        self.dist_left_wall = 1.0
+        self.dist_right_wall = 1.0
+        self.allowed_dist_delta = 0.20
         self.wall_found = False
-        self.dont_update_for_secs = 0.2  # sleep for more continues actions
-
+        self.turn_delay = 0.02  # sleep for more continues actions
+        self.forward_delay = 0.25  # sleep for more continues actions
 
     def listener_callback(self, msg):
         self.process_laser_scan(msg)
@@ -35,82 +34,102 @@ class WallFollower(Node):
         num_ranges = len(ranges)
 
         print(num_ranges)
+        circle_size = int(num_ranges/360)
 
         # Define regions for front, left, and right
         # Front is now centered at index 0, spanning +/-35 degrees
-        front_indices = list(range(num_ranges - 35, num_ranges)) + list(range(0, 35 + 1))
-        right_indices = range(num_ranges - 35 - 60, num_ranges - 35)  # right 60/2 degrees
-        left_indices = range(35 + 1, 35 + 60 + 1)  # left 60/2 degrees
+        front_indices = list(range(num_ranges - 35*circle_size, num_ranges)) + list(range(0, 35*circle_size + 1))
+        right_indices = range(num_ranges - 35*circle_size - 60*circle_size, num_ranges - 35*circle_size)  # right 60 degrees
+        left_indices = range(35*circle_size + 1, 35*circle_size + 60*circle_size + 1)  # left 60 degrees
 
         # Calculate minimum distances in each region
-        self.region_front = min([ranges[i] for i in front_indices if not math.isinf(ranges[i])], default=float('inf'))
-        self.region_left = min([ranges[i] for i in left_indices if not math.isinf(ranges[i])], default=float('inf'))
-        self.region_right = min([ranges[i] for i in right_indices if not math.isinf(ranges[i])], default=float('inf'))
+        self.dist_front_wall = min([ranges[i] for i in front_indices if not math.isinf(ranges[i])], default=float('inf'))
+        self.dist_left_wall = min([ranges[i] for i in left_indices if not math.isinf(ranges[i])], default=float('inf'))
+        self.dist_right_wall = min([ranges[i] for i in right_indices if not math.isinf(ranges[i])], default=float('inf'))
 
-        print("front closest: ", self.region_front)
-        print("left closest: ", self.region_left)
-        print("right closest: ", self.region_right)
+        print("front closest: ", self.dist_front_wall)
+        print("left closest: ", self.dist_left_wall)
+        print("right closest: ", self.dist_right_wall)
 
     def is_searching_wall(self):
-        if self.region_front - self.desired_distance < self.error_from_wall:
+        if self.dist_front_wall - self.desired_distance < self.allowed_dist_delta:
             return False
-        if self.region_left - self.desired_distance < self.error_from_wall:
+        if self.dist_left_wall - self.desired_distance < self.allowed_dist_delta:
             return False
-        if self.region_right - self.desired_distance < self.error_from_wall:
+        if self.dist_right_wall - self.desired_distance < self.allowed_dist_delta:
             return False
         return True
 
     def init_wall_search(self):
-        if self.is_searching_wall():
-            return False
-        self.wall_found = True
-        return True
+        if not self.is_searching_wall():
+            self.wall_found = True
 
     def follow_wall(self):
 
         twist_msg = Twist()
 
-        sleep(self.dont_update_for_secs)
-
-        error_left = self.region_left - self.desired_distance
-
-        if not self.init_wall_search() and not self.wall_found:
-            print("SEARCH: ", self.region_front)
+        if not self.wall_found:
+            self.init_wall_search()
+            print("SEARCH: ", self.dist_front_wall)
             twist_msg.linear.x = self.forward_speed
             twist_msg.angular.z = 0.0
+            self.publisher_.publish(twist_msg)
+            sleep(self.forward_delay)
 
-        elif not self.is_searching_wall() and self.wall_found:
-            if self.desired_distance+self.error_from_wall > self.region_front:  # if too close to front
-                print("too front turn right: ", self.region_front)
+        elif not self.is_searching_wall():
+            if self.dist_front_wall < self.desired_distance + self.allowed_dist_delta/2:  # if too close to front
+                print("too close to front turn right: ", self.dist_front_wall)
                 twist_msg.linear.x = 0.0
                 twist_msg.angular.z = -self.angular_speed  # Turn right if front is too close
-            elif error_left > self.error_from_wall/1.2: # if left wall is too far, turn left
-                print("left wall too far, turn left: ", self.region_left)
+                self.publisher_.publish(twist_msg)
+                sleep(self.turn_delay)
+            elif self.dist_left_wall > self.desired_distance + self.allowed_dist_delta/2: # if left wall is too far, turn left
+                print("left wall too far, turn left: ", self.dist_left_wall)
                 twist_msg.linear.x = 0.0
                 twist_msg.angular.z = self.angular_speed
-            elif error_left < self.error_from_wall/-1.2: # if left wall is too close, turn right
-                print("left wall too close, turn right: ", self.region_left)
+                self.publisher_.publish(twist_msg)
+                sleep(self.turn_delay)
+            elif self.dist_left_wall < self.desired_distance - self.allowed_dist_delta/2: # if left wall is too close, turn right
+                print("left wall too close, turn right: ", self.dist_left_wall)
                 twist_msg.linear.x = 0.0
                 twist_msg.angular.z = -self.angular_speed
+                self.publisher_.publish(twist_msg)
+                sleep(self.turn_delay)
             else:
-                print("GO: ", self.region_front)
+                print("GO: ", self.dist_front_wall)
                 twist_msg.linear.x = self.forward_speed
                 twist_msg.angular.z = 0.0
+                self.publisher_.publish(twist_msg)
+                sleep(self.forward_delay)
 
         else:
-            print("WALL LEFT TURN LEFT: ", self.region_front)
-            print("left wall too far, turn left: ", self.region_left)
+            print("WALL LEFT TURN LEFT: ", self.dist_front_wall)
+            print("left wall too far, turn left: ", self.dist_left_wall)
             twist_msg.linear.x = 0.0
             twist_msg.angular.z = self.angular_speed
+            self.publisher_.publish(twist_msg)
+            sleep(self.turn_delay)
 
-        self.publisher_.publish(twist_msg)
 
 def main(args=None):
     rclpy.init(args=args)
+
     wall_follower = WallFollower()
-    rclpy.spin(wall_follower)
-    wall_follower.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(wall_follower)
+    except KeyboardInterrupt:
+        wall_follower.publisher_.publish(Twist())  # stop robot
+        print("Node stopped cleanly")
+        sleep(0.5)
+    finally:
+        if wall_follower is not None:
+            wall_follower.destroy_node()
+            print("Node destroyed.")
+        if rclpy.ok():
+            rclpy.shutdown()
+            print("Node shut down.")
+
+        return 0
 
 if __name__ == '__main__':
     main()
