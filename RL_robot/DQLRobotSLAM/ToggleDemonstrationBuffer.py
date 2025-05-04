@@ -79,14 +79,7 @@ class ToggleDemonstrationBuffer:
             return False
 
     def save_demonstrations(self, custom_path=None):
-        """Save current demonstration buffer to file
-
-        Args:
-            custom_path: Optional path to save to. If None, uses default save_path.
-
-        Returns:
-            bool: True if demonstrations were successfully saved, False otherwise
-        """
+        """Save current demonstration buffer to file"""
         if len(self.demo_buffer) == 0:
             self.log("No demonstrations to save.")
             return False
@@ -97,10 +90,13 @@ class ToggleDemonstrationBuffer:
             # Ensure directory exists
             os.makedirs(os.path.dirname(path_to_use), exist_ok=True)
 
-            with open(path_to_use, 'wb') as f:
-                pickle.dump(self.demo_buffer, f)
+            # Clone the buffer to avoid modifying during serialization
+            buffer_copy = list(self.demo_buffer)
 
-            self.log(f"Saved {len(self.demo_buffer)} demonstrations to {path_to_use}")
+            with open(path_to_use, 'wb') as f:
+                pickle.dump(buffer_copy, f)
+
+            self.log(f"Saved {len(buffer_copy)} demonstrations to {path_to_use}")
             return True
         except Exception as e:
             self.log(f"Failed to save demonstrations: {e}")

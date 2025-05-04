@@ -27,7 +27,7 @@ BATCH_SIZE = 64
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
-EPSILON_END = 0.1
+EPSILON_END = 0.05
 EPSILON_DECAY = 250000  # Steps over which epsilon decays
 TARGET_UPDATE_FREQ = 2500  # Steps between updating the target network
 
@@ -400,13 +400,20 @@ class DQLAgent(Node):
 
     def handle_episode_end(self):
         """Handle the end of a training episode"""
+        mean_reward_100 = 0.0  # Initialize with a default value
+
         if not self.demo_buffer.check_for_toggle():
             self.episode_count += 1
-            self.reward_buffer.append(self.episode_reward)  # Add final reward to buffer for avg calculation
-            mean_reward_100 = np.mean(self.reward_buffer)
+            if self.reward_buffer is not None:  # Add null check
+                self.reward_buffer.append(self.episode_reward)
+                if len(self.reward_buffer) > 0:  # Add size check
+                    mean_reward_100 = np.mean(self.reward_buffer)
 
-        # log episode details
-        current_lr = self.optimizer.param_groups[0]['lr']
+        # Log episode details
+        current_lr = 0.0
+        if self.optimizer and hasattr(self.optimizer, 'param_groups') and len(self.optimizer.param_groups) > 0:
+            current_lr = self.optimizer.param_groups[0]['lr']
+
         self.get_logger().info(
             f"--- Episode {self.episode_count} Finished --- \n"
             f"Reward: {self.episode_reward:.2f} | Avg Reward (Last 100): {mean_reward_100:.2f} \n"
@@ -419,11 +426,14 @@ class DQLAgent(Node):
         self.save_models()
 
         # Reset for next episode
-        self.current_obs, _ = self.env.reset()
-        if self.current_obs is None:
-            self.get_logger().error("Failed to reset environment after episode end!")
-            return
-        self.episode_reward = 0.0  # Reset episode reward
+        try:
+            self.current_obs, _ = self.env.reset()
+            if self.current_obs is None:
+                self.get_logger().error("Failed to reset environment after episode end!")
+                return
+            self.episode_reward = 0.0  # Reset episode reward
+        except Exception as e:
+            self.get_logger().error(f"Error during environment reset: {e}")
 
     def learn_step(self):
         """Performs a gradient descent step based on a batch of experiences."""
