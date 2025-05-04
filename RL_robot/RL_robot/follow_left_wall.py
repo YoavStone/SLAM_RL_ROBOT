@@ -68,29 +68,28 @@ class WallFollower(Node):
 
         twist_msg = Twist()
 
-        error_left = self.dist_left_wall - self.desired_distance
-
         if not self.wall_found:
             self.init_wall_search()
             print("SEARCH: ", self.dist_front_wall)
             twist_msg.linear.x = self.forward_speed
             twist_msg.angular.z = 0.0
             self.publisher_.publish(twist_msg)
+            sleep(self.forward_delay)
 
         elif not self.is_searching_wall():
-            if self.dist_front_wall < self.desired_distance + self.allowed_dist_delta/3:  # if too close to front
+            if self.dist_front_wall < self.desired_distance + self.allowed_dist_delta/2:  # if too close to front
                 print("too close to front turn right: ", self.dist_front_wall)
                 twist_msg.linear.x = 0.0
                 twist_msg.angular.z = -self.angular_speed  # Turn right if front is too close
                 self.publisher_.publish(twist_msg)
                 sleep(self.turn_delay)
-            elif error_left > self.allowed_dist_delta/1.2: # if left wall is too far, turn left
+            elif self.dist_left_wall > self.desired_distance + self.allowed_dist_delta/2: # if left wall is too far, turn left
                 print("left wall too far, turn left: ", self.dist_left_wall)
                 twist_msg.linear.x = 0.0
                 twist_msg.angular.z = self.angular_speed
                 self.publisher_.publish(twist_msg)
                 sleep(self.turn_delay)
-            elif error_left < self.allowed_dist_delta/-1.2: # if left wall is too close, turn right
+            elif self.dist_left_wall < self.desired_distance - self.allowed_dist_delta/2: # if left wall is too close, turn right
                 print("left wall too close, turn right: ", self.dist_left_wall)
                 twist_msg.linear.x = 0.0
                 twist_msg.angular.z = -self.angular_speed
@@ -114,10 +113,23 @@ class WallFollower(Node):
 
 def main(args=None):
     rclpy.init(args=args)
+
     wall_follower = WallFollower()
-    rclpy.spin(wall_follower)
-    wall_follower.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(wall_follower)
+    except KeyboardInterrupt:
+        wall_follower.publisher_.publish(Twist())  # stop robot
+        print("Node stopped cleanly")
+        sleep(0.5)
+    finally:
+        if wall_follower is not None:
+            wall_follower.destroy_node()
+            print("Node destroyed.")
+        if rclpy.ok():
+            rclpy.shutdown()
+            print("Node shut down.")
+
+        return 0
 
 if __name__ == '__main__':
     main()
