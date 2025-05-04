@@ -19,7 +19,7 @@ class MotorsController:
         self.l_motor_desired_speed = 0.0
 
         self.pwm_change_factor = 0.16  # adjust how much the inaccuracy in the speed difference affects the pwm change
-        self.start_from_stop = 0.8
+        self.start_from_stop = 0.9
 
         self.max_pwm = 0.8
 

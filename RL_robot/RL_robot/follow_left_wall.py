@@ -77,7 +77,7 @@ class WallFollower(Node):
             sleep(self.forward_delay)
 
         elif not self.is_searching_wall():
-            if self.dist_front_wall < self.desired_distance + self.allowed_dist_delta/2:  # if too close to front
+            if self.dist_front_wall < self.desired_distance + self.allowed_dist_delta/1.5:  # if too close to front
                 print("too close to front turn right: ", self.dist_front_wall)
                 twist_msg.linear.x = 0.0
                 twist_msg.angular.z = -self.angular_speed  # Turn right if front is too close
