@@ -20,7 +20,7 @@ class RobotControlNode(Node):
         self.declare_parameter('arduino_baudrate', 115200)
         self.declare_parameter('wheel_radius', 0.034)  # meters
         self.declare_parameter('wheel_separation', 0.34)  # meters
-        self.declare_parameter('ticks_per_revolution', 170)  # based on encoder
+        self.declare_parameter('ticks_per_revolution', 170*2)  # based on encoder
 
         # Get parameters
         arduino_port = self.get_parameter('arduino_port').value
