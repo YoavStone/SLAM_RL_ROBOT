@@ -4,7 +4,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 import time
 
-from .MotorsSynchronizer import MotorsSynchronizer
+from .ArduinoMotorsSynchronizer import ArduinoMotorsSynchronizer
 from .MotorsController import MotorsController
 from .RobotPositionCalculator import RobotPositionCalculator
 from .VelocityToMotorsCmdConvertor import VelocityToMotorsCmdConvertor
@@ -12,28 +12,58 @@ from .VelocityToMotorsCmdConvertor import VelocityToMotorsCmdConvertor
 
 class RobotControlNode(Node):
     def __init__(self):
-        print("will initialized robot control node")
+        print("Initializing robot control node with Arduino interface")
         super().__init__('robot_control_node')
 
-        # Initialize motors synchronizer
-        # Define GPIO pins
-        in1 = 17
-        in2 = 27
-        in3 = 23
-        in4 = 24
+        # Define parameters
+        self.declare_parameter('arduino_port', '/dev/ttyACM0')
+        self.declare_parameter('arduino_baudrate', 115200)
+        self.declare_parameter('wheel_radius', 0.034)  # meters
+        self.declare_parameter('wheel_separation', 0.34)  # meters
+        self.declare_parameter('ticks_per_revolution', 170)  # based on encoder
 
-        pwmR = 22
-        pwmL = 25
+        # Get parameters
+        arduino_port = self.get_parameter('arduino_port').value
+        arduino_baudrate = self.get_parameter('arduino_baudrate').value
+        self.wheel_radius = self.get_parameter('wheel_radius').value
+        self.wheel_separation = self.get_parameter('wheel_separation').value
+        self.ticks_per_revolution = self.get_parameter('ticks_per_revolution').value
 
-        ena1 = 19
-        enb1 = 26
-        ena2 = 13
-        enb2 = 6
+        # Initialize motors synchronizer with Arduino connection
+        try:
+            self.motors_synchronizer = ArduinoMotorsSynchronizer(
+                port=arduino_port,
+                baudrate=arduino_baudrate,
+                timeout=1.0
+            )
+            print(f"Connected to Arduino on {arduino_port}")
+        except Exception as e:
+            self.get_logger().error(f"Failed to connect to Arduino: {e}")
+            raise
 
-        FREQ = 1000
+        # Speed multiplier factor
+        self.linear_speed_factor = 1.0
+        self.turn_speed_factor = 1.0
 
-        self.motors_synchronizer = MotorsSynchronizer(in3, in4, in1, in2, pwmR, pwmL, FREQ, ena1, enb1, ena2, enb2)
-        self.motors_synchronizer.call_encoder_interrupt()
+        # Initialize motor controller
+        self.motor_controller = MotorsController(self.motors_synchronizer, self.ticks_per_revolution)
+        self.closed_loop_speed_control_timer = self.create_timer(0.05, self.motor_controller.closed_loop_control_speed)  # 20Hz update rate
+
+        # Initialize position calculator
+        self.robot_position_calculator = RobotPositionCalculator(
+            self.motors_synchronizer,
+            self.wheel_radius,
+            self.wheel_separation,
+            self.ticks_per_revolution
+        )
+
+        # Initialize velocity converter
+        self.vel_to_motors_cmd_convertor = VelocityToMotorsCmdConvertor(
+            self.motors_synchronizer,
+            self.motor_controller,
+            self.wheel_separation,
+            self.wheel_radius
+        )
 
         # Initialize velocity subscriber
         self.velocity_subscription = self.create_subscription(
@@ -50,35 +80,26 @@ class RobotControlNode(Node):
             10
         )
 
-        # Set up parameters for odometry calculation
-        self.wheel_radius = 0.034  # meters
-        self.wheel_separation = 0.34  # meters
-        self.ticks_per_revolution = 170  # based on your encoder
-
-        # Speed multiplier factor
-        self.linear_speed_factor = 1.0
-        self.turn_speed_factor = 1.0
-
-        self.motor_controller = MotorsController(self.motors_synchronizer, self.ticks_per_revolution)
-        self.closed_loop_speed_control_timer = self.create_timer(0.05, self.motor_controller.closed_loop_control_speed)  # 20Hz update rate
-
         # Time tracking
         self.last_time = time.time()
-
-        self.robot_position_calculator = RobotPositionCalculator(self.motors_synchronizer, self.wheel_radius, self.wheel_separation, self.ticks_per_revolution)
-        self.vel_to_motors_cmd_convertor = VelocityToMotorsCmdConvertor(self.motors_synchronizer, self.motor_controller, self.wheel_separation, self.wheel_radius)
 
         # Set up timer for regular position updates
         self.publisher_timer = self.create_timer(0.1, self.publish_position)  # 10Hz update rate
 
-        print('Robot Control Node has been initialized')
+        print('Robot Control Node with Arduino interface has been initialized')
 
     def velocity_callback(self, msg):
         # Convert received velocities to motor commands
         self.vel_to_motors_cmd_convertor.convert_vel_to_motor_dir(msg)
 
     def publish_position(self):
-        # Get current motor positions
+        # Get current motor positions and publish odometry
         odom = self.robot_position_calculator.create_odom_message(self.get_clock().now().to_msg())
-        # Publish the message
         self.odom_publisher.publish(odom)
+
+    def on_shutdown(self):
+        """Clean up on node shutdown."""
+        self.get_logger().info("Shutting down RobotControlNode")
+        if hasattr(self, 'motors_synchronizer'):
+            self.motors_synchronizer.stop()
+            self.motors_synchronizer.close()

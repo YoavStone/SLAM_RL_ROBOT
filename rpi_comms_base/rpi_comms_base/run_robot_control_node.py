@@ -14,6 +14,7 @@ def main(args=None):
         pass
     finally:
         print("clean up command robot node")
+        node.on_shutdown()
         if node is not None:
             node.destroy_node()
             print("Node destroyed.")

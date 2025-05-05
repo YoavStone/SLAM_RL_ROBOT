@@ -5,8 +5,7 @@ from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.node import Node
 
-from .MotorsSynchronizer import MotorsSynchronizer
-from .MotorsController import MotorsController
+# from .MotorsSynchronizer import MotorsSynchronizer
 
 
 class RobotPositionCalculator:

@@ -1,7 +1,7 @@
 import math
 import time
 
-from .MotorsSynchronizer import MotorsSynchronizer
+# from .MotorsSynchronizer import MotorsSynchronizer
 
 
 class MotorsController:
