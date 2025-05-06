@@ -33,3 +33,6 @@ class ArduinoMotorDriver:
     def get_pos(self):
         """Return the current encoder position."""
         return self.en_count
+
+    def reset(self):
+        self.en_count = 0

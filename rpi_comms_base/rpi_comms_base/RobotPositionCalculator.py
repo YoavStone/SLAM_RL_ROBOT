@@ -99,6 +99,8 @@ class RobotPositionCalculator:
         """
         resets the odom
         """
+        self.motors_synchronizer.reset()
+
         # Robot pose (x, y, theta)
         self.x = 0.0
         self.y = 0.0
@@ -107,3 +109,5 @@ class RobotPositionCalculator:
         self.last_right_pos = 0
         self.last_left_pos = 0
         self.last_time = time.time()
+
+        print(f'Reset Position: ({self.x:.3f}, {self.y:.3f}, {self.theta:.3f}), R: {self.last_right_pos}, L: {self.last_left_pos}')

@@ -130,6 +130,12 @@ class ArduinoMotorsSynchronizer:
         # If error or no Arduino, return current values
         return self.R_Motor.get_pos(), self.L_Motor.get_pos()
 
+    def reset(self):
+        # Reset encoders at startup
+        self.arduino.write(b"R\n")
+        self.R_Motor.reset()
+        self.L_Motor.reset()
+
     def close(self):
         """Close the Arduino connection and stop motors."""
         if self.arduino:

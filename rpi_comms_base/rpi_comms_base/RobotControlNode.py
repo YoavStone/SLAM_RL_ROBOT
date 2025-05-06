@@ -106,6 +106,7 @@ class RobotControlNode(Node):
         self.motors_synchronizer.stop()
         time.sleep(0.5)  # wait for robot to stop
         self.robot_position_calculator.reset()
+        self.publish_position()
 
     def on_shutdown(self):
         """Clean up on node shutdown."""
