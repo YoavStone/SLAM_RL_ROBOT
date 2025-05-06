@@ -52,11 +52,11 @@ class WallFollower(Node):
         print("right closest: ", self.dist_right_wall)
 
     def is_searching_wall(self):
-        if self.dist_front_wall - self.desired_distance < self.allowed_dist_delta * 1.75:
+        if self.dist_front_wall - self.desired_distance < self.allowed_dist_delta + 0.15:
             return False
-        if self.dist_left_wall - self.desired_distance < self.allowed_dist_delta * 1.75:
+        if self.dist_left_wall - self.desired_distance < self.allowed_dist_delta + 0.15:
             return False
-        if self.dist_right_wall - self.desired_distance < self.allowed_dist_delta * 1.75:
+        if self.dist_right_wall - self.desired_distance < self.allowed_dist_delta + 0.15:
             return False
         return True
 
