@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+from std_msgs.msg import Empty
 import time
 
 from .ArduinoMotorsSynchronizer import ArduinoMotorsSynchronizer
@@ -41,10 +42,6 @@ class RobotControlNode(Node):
             self.get_logger().error(f"Failed to connect to Arduino: {e}")
             raise
 
-        # Speed multiplier factor
-        self.linear_speed_factor = 1.0
-        self.turn_speed_factor = 1.0
-
         # Initialize motor controller
         self.motor_controller = MotorsController(self.motors_synchronizer, self.ticks_per_revolution)
         self.closed_loop_speed_control_timer = self.create_timer(0.05, self.motor_controller.closed_loop_control_speed)  # 20Hz update rate
@@ -80,6 +77,14 @@ class RobotControlNode(Node):
             10
         )
 
+        # Initialize position subscriber
+        self.reset_subscriber = self.create_subscription(
+            Empty,
+            'reset_robot',
+            self.reset_callback,
+            10
+        )
+
         # Time tracking
         self.last_time = time.time()
 
@@ -96,6 +101,11 @@ class RobotControlNode(Node):
         # Get current motor positions and publish odometry
         odom = self.robot_position_calculator.create_odom_message(self.get_clock().now().to_msg())
         self.odom_publisher.publish(odom)
+
+    def reset_callback(self, msg):
+        self.motors_synchronizer.stop()
+        time.sleep(0.5)  # wait for robot to stop
+        self.robot_position_calculator.reset()
 
     def on_shutdown(self):
         """Clean up on node shutdown."""

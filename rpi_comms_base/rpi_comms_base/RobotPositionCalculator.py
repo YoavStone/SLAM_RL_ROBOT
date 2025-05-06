@@ -94,3 +94,16 @@ class RobotPositionCalculator:
 
         # return the message
         return odom
+
+    def reset(self):
+        """
+        resets the odom
+        """
+        # Robot pose (x, y, theta)
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
+
+        self.last_right_pos = 0
+        self.last_left_pos = 0
+        self.last_time = time.time()
