@@ -22,7 +22,7 @@ class WallFollower(Node):
         self.dist_right_wall = 1.0
         self.allowed_dist_delta = 0.20
         self.wall_found = False
-        self.turn_delay = 0.05  # sleep for more continues actions
+        self.turn_delay = 0.02  # sleep for more continues actions
         self.forward_delay = 0.25  # sleep for more continues actions
 
     def listener_callback(self, msg):
@@ -52,11 +52,11 @@ class WallFollower(Node):
         print("right closest: ", self.dist_right_wall)
 
     def is_searching_wall(self):
-        if self.dist_front_wall - self.desired_distance < self.allowed_dist_delta + 0.15:
+        if self.dist_front_wall - self.desired_distance < self.allowed_dist_delta:
             return False
-        if self.dist_left_wall - self.desired_distance < self.allowed_dist_delta + 0.15:
+        if self.dist_left_wall - self.desired_distance < self.allowed_dist_delta:
             return False
-        if self.dist_right_wall - self.desired_distance < self.allowed_dist_delta + 0.15:
+        if self.dist_right_wall - self.desired_distance < self.allowed_dist_delta:
             return False
         return True
 
