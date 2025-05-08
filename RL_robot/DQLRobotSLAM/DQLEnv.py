@@ -93,7 +93,7 @@ class DQLEnv:
 
         # Check if this is a self-termination (e.g., time limit or map completion)
         if not terminated:
-            truncated = self.gazebo_env.reward_calculator.check_time_and_map_completion(self.gazebo_env.map_processed)
+            truncated = self.gazebo_env.reward_calculator.check_time_and_map_completion()
 
         # Only call the reset handler if something ended the episode
         is_done = terminated or truncated

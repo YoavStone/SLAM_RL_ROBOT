@@ -142,6 +142,10 @@ class DQLAgent(Node):
         self.reward_buffer = deque([0.0], maxlen=1000)  # For logging avg reward
         self.episode_reward = 0.0
 
+        # --- for epsilon greedy - better random action picking ---
+        self.current_random_action = None
+        self.random_action_counter = 0
+
         # --- Saving Logic ---
         self.best_episode_reward = -float('inf')  # Track the best single episode reward
         self.best_model_dir = os.path.join("src/RL_robot/saved_networks/network_params/")
@@ -230,6 +234,40 @@ class DQLAgent(Node):
             normalized_lr = LEARNING_RATE_START * decay_factor + LEARNING_RATE_END * (1 - decay_factor)
             return normalized_lr / LEARNING_RATE_START
 
+    def random_action_picking(self, epsilon):
+        """
+        Picks a random action and decides how many times to repeat it based on epsilon.
+
+        Args:
+            epsilon (float): Current exploration rate between 0 and 1
+
+        Returns:
+            int: Action to execute
+        """
+        # If we still have repetitions of the previous action to execute
+        if self.random_action_counter > 0:
+            self.random_action_counter -= 1
+            return self.current_random_action
+
+        # Pick a new random action
+        action = self.env.action_space.sample()
+
+        # Determine repetition count based on action type and epsilon
+        if action in [1, 2]:  # Forward or backward
+            # For forward/backward: between 1-6 repetitions, fewer as epsilon decreases
+            max_repetitions = max(1, int(6 * epsilon))
+            repetitions = random.randint(1, max_repetitions)
+        else:
+            # For other actions: between 1-3 repetitions, fewer as epsilon decreases
+            max_repetitions = max(1, int(3 * epsilon))
+            repetitions = random.randint(1, max_repetitions)
+
+        # Store the action and set the counter
+        self.current_random_action = action
+        self.random_action_counter = repetitions - 1  # -1 because we'll execute once now
+
+        return action
+
     def initialize_replay_buffer(self):
         """Fills the replay buffer with initial random experiences."""
         if self.current_obs is None:
@@ -243,7 +281,7 @@ class DQLAgent(Node):
             epsilon = np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end])
 
             if random.random() < epsilon:
-                action = self.env.action_space.sample()  # Explore
+                action = self.random_action_picking(epsilon)  # Explore with repetition
             else:
                 action = self.q_network.act(self.current_obs)  # Exploit
 
@@ -255,6 +293,8 @@ class DQLAgent(Node):
                 # Attempt reset if needed
                 if is_done:
                     obs_reset, _ = self.env.reset()
+                    self.current_random_action = None
+                    self.random_action_counter = 0
                     if obs_reset is None:
                         self.get_logger().error("Failed to reset environment during buffer init!")
                         return False
@@ -270,6 +310,8 @@ class DQLAgent(Node):
 
             if is_done:
                 self.current_obs, _ = self.env.reset()
+                self.current_random_action = None
+                self.random_action_counter = 0
                 if self.current_obs is None:
                     self.get_logger().error("Failed to reset environment during buffer init!")
                     return False
@@ -301,6 +343,8 @@ class DQLAgent(Node):
         # If current_obs is None, we need to reset or initialize
         if self.current_obs is None:
             self.current_obs, _ = self.env.reset()
+            self.current_random_action = None
+            self.random_action_counter = 0
             if self.current_obs is None:
                 self.get_logger().error("Failed to get observation after reset in train_step")
                 return
@@ -320,7 +364,7 @@ class DQLAgent(Node):
             # AI control mode - epsilon-greedy selection
             epsilon = np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end])
             if random.random() < epsilon:
-                action = self.env.action_space.sample()  # Explore
+                action = self.random_action_picking(epsilon)  # Explore with repetition
             else:
                 action = self.q_network.act(self.current_obs)  # Exploit
 
@@ -332,6 +376,8 @@ class DQLAgent(Node):
         if new_obs is None:
             self.get_logger().warn("Received None observation during training step. Attempting reset.")
             self.current_obs, _ = self.env.reset()
+            self.current_random_action = None
+            self.random_action_counter = 0
             return  # Skip this step
 
         # Process the transition based on mode
@@ -371,6 +417,8 @@ class DQLAgent(Node):
         # Initialize observation if needed
         if self.current_obs is None:
             self.current_obs, _ = self.env.reset()
+            self.current_random_action = None
+            self.random_action_counter = 0
             if self.current_obs is None:
                 self.get_logger().error("Failed to get initial observation in execution mode!")
                 return
@@ -387,6 +435,8 @@ class DQLAgent(Node):
         if new_obs is None:
             self.get_logger().warn("Received None observation during execution step.")
             self.current_obs, _ = self.env.reset()
+            self.current_random_action = None
+            self.random_action_counter = 0
             return
 
         self.current_obs = new_obs
@@ -397,9 +447,14 @@ class DQLAgent(Node):
             self.get_logger().info(f"Execution episode complete. Final reward: {self.episode_reward:.2f}")
             self.current_obs, _ = self.env.reset()
             self.episode_reward = 0.0
+            self.current_random_action = None
+            self.random_action_counter = 0
 
     def handle_episode_end(self):
         """Handle the end of a training episode"""
+        self.current_random_action = None
+        self.random_action_counter = 0
+
         mean_reward_100 = 0.0  # Initialize with a default value
 
         if not self.demo_buffer.check_for_toggle():

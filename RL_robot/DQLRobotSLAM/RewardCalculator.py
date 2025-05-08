@@ -7,12 +7,13 @@ from visualizers.RewardVisualizer import RewardVisualizer
 
 # Constants
 CONTINUES_PUNISHMENT = -0.9  # amount of punishment for every sec
+INCOMPLETE_MAP_PUNISHMENT = 5
 HIT_WALL_PUNISHMENT = -500.0
 CLOSE_TO_WALL_PUNISHMENT = 0.35  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
 WALL_POWER = 6.5
 EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
 MOVEMENT_REWARD = 0.7  # reward for moving beyond a threshold (so it wont stay in place)
-REVISIT_PENALTY = -0.2  # punishment for revisiting a cell in the map
+REVISIT_PENALTY = -0.17  # punishment for revisiting a cell in the map
 REMEMBER_VISIT_TIME = 1.5  # how long to keep the visit time of a spot so it counts as visited in seconds
 GO_BACK_PUNISH = -0.4  # punishment for going backwards
 
@@ -42,6 +43,7 @@ class RewardCalculator:
         self.total_cells = None
         self.visit_count_map = None
         self.last_position = None
+        self.map_explored_percent = 0
 
         self.step_counter = 0
 
@@ -168,9 +170,11 @@ class RewardCalculator:
 
     def percent_explored(self, new_map):
         if self.total_cells is None or len(new_map) == 0:
-            return 0.0
+            self.map_explored_percent = 0.0
+            return self.map_explored_percent
         known_cells = sum(1 for val in new_map if val != -1.0)
-        return known_cells / self.total_cells
+        self.map_explored_percent = known_cells / self.total_cells
+        return self.map_explored_percent
 
     def scale_distance_by_scan_angle(self, scan_distance, scan_idx, num_sectors=16):
         """
@@ -295,11 +299,10 @@ class RewardCalculator:
 
         return reward
 
-    def check_time_and_map_completion(self, new_map):
+    def check_time_and_map_completion(self):
         # Check map exploration condition
-        explored_percent = self.percent_explored(new_map)
-        if explored_percent >= self.explored_threshold:
-            print(f"Terminating: {explored_percent * 100:.2f}% of map explored (target: {self.explored_threshold * 100}%)")
+        if self.map_explored_percent >= self.explored_threshold:
+            print(f"Terminating: {self.map_explored_percent * 100:.2f}% of map explored (target: {self.explored_threshold * 100}%)")
             return True
 
         # Check time-based termination
@@ -310,12 +313,19 @@ class RewardCalculator:
 
         return False
 
+    def incomplete_map_punishment(self, dt):
+        pun = CONTINUES_PUNISHMENT * (1.0 - self.map_explored_percent) * dt
+        return pun * INCOMPLETE_MAP_PUNISHMENT
+
     def calc_reward(self, time_from_last_env_update, new_dis, new_map, grid_position, odom_pos, action):
         """Calculate reward based on time spent, proximity to walls, and exploration"""
         self.step_counter += 1
 
+        self.percent_explored(new_map)
+
         # Time-based continuous punishment
-        cont = CONTINUES_PUNISHMENT * time_from_last_env_update
+        cont = self.incomplete_map_punishment(time_from_last_env_update)
+        cont += CONTINUES_PUNISHMENT * time_from_last_env_update
         self.last_cont_punishment = cont
         reward = cont
 
@@ -336,7 +346,7 @@ class RewardCalculator:
         reward += revisit_penalty
 
         # Check if finished by episode timeout or by map completion
-        trunc = self.check_time_and_map_completion(new_map)
+        trunc = self.check_time_and_map_completion()
 
         # Store total reward for visualization
         self.last_total_reward = reward
@@ -366,6 +376,7 @@ class RewardCalculator:
         self.total_cells = None
         self.visit_count_map = None
         self.last_position = None
+        self.map_explored_percent = 0
 
         self.step_counter = 0
 
