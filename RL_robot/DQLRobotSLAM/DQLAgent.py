@@ -274,7 +274,7 @@ class DQLAgent(Node):
         while len(self.replay_buffer) < MIN_REPLAY_SIZE:
             epsilon = np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end])
 
-            if random.random() < epsilon:
+            if random.random() < epsilon or self.random_action_counter > 0:
                 action = self.random_action_picking(epsilon)  # Explore with repetition
             else:
                 action = self.q_network.act(self.current_obs)  # Exploit
@@ -357,7 +357,7 @@ class DQLAgent(Node):
         else:
             # AI control mode - epsilon-greedy selection
             epsilon = np.interp(self.steps, [0, self.epsilon_decay], [self.epsilon_start, self.epsilon_end])
-            if random.random() < epsilon:
+            if random.random() < epsilon or self.random_action_counter > 0:
                 action = self.random_action_picking(epsilon)  # Explore with repetition
             else:
                 action = self.q_network.act(self.current_obs)  # Exploit
