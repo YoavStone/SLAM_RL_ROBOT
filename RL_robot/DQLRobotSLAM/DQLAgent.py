@@ -252,15 +252,9 @@ class DQLAgent(Node):
         # Pick a new random action
         action = self.env.action_space.sample()
 
-        # Determine repetition count based on action type and epsilon
-        if action in [1, 2]:  # Forward or backward
-            # For forward/backward: between 1-6 repetitions, fewer as epsilon decreases
-            max_repetitions = max(1, int(6 * epsilon))
-            repetitions = random.randint(1, max_repetitions)
-        else:
-            # For other actions: between 1-3 repetitions, fewer as epsilon decreases
-            max_repetitions = max(1, int(3 * epsilon))
-            repetitions = random.randint(1, max_repetitions)
+        # between 1-5 repetitions, fewer as epsilon decreases
+        max_repetitions = max(1, int(5 * epsilon))
+        repetitions = random.randint(1, max_repetitions)
 
         # Store the action and set the counter
         self.current_random_action = action
