@@ -36,9 +36,8 @@ class RewardCalculator:
         self.last_total_reward = 0
 
         self.explored_threshold = 0.93  # 93%
-        self.max_episode_duration = 120  # seconds
+        self.max_episode_steps = 800  # steps
 
-        self.episode_start_time = time.time()
         self.previous_map = None
         self.total_cells = None
         self.visit_count_map = None
@@ -299,16 +298,15 @@ class RewardCalculator:
 
         return reward
 
-    def check_time_and_map_completion(self):
+    def check_steps_and_map_completion(self):
         # Check map exploration condition
         if self.map_explored_percent >= self.explored_threshold:
             print(f"Terminating: {self.map_explored_percent * 100:.2f}% of map explored (target: {self.explored_threshold * 100}%)")
             return True
 
-        # Check time-based termination
-        elapsed = time.time() - self.episode_start_time
-        if elapsed > self.max_episode_duration:
-            print(f"Terminating: episode ran for {elapsed:.1f}s (max: {self.max_episode_duration}s)")
+        # Check max-step-based termination
+        if self.max_episode_steps <= self.step_counter:
+            print(f"Terminating: episode ran for {self.step_counter} steps (max: {self.max_episode_steps} steps)")
             return True
 
         return False
@@ -323,7 +321,7 @@ class RewardCalculator:
 
         self.percent_explored(new_map)
 
-        # Time-based continuous punishment
+        # Time-&-map-incompletion-based continuous punishment
         cont = self.incomplete_map_punishment(time_from_last_env_update)
         cont += CONTINUES_PUNISHMENT * time_from_last_env_update
         self.last_cont_punishment = cont
@@ -346,7 +344,7 @@ class RewardCalculator:
         reward += revisit_penalty
 
         # Check if finished by episode timeout or by map completion
-        trunc = self.check_time_and_map_completion()
+        trunc = self.check_steps_and_map_completion()
 
         # Store total reward for visualization
         self.last_total_reward = reward
@@ -371,7 +369,6 @@ class RewardCalculator:
         return reward, is_terminated
 
     def reward_reset(self):
-        self.episode_start_time = time.time()
         self.previous_map = None
         self.total_cells = None
         self.visit_count_map = None

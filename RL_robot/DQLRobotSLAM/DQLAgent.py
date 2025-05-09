@@ -166,7 +166,7 @@ class DQLAgent(Node):
         # buffer for demonstrations of good human state action reward...
         self.demo_buffer = ToggleDemonstrationBuffer(
             max_demos=50000,
-            demo_batch_ratio=0.3,
+            demo_batch_ratio=0.4,
             auto_timeout=300,  # 5 minutes auto-timeout
             save_path="src/RL_robot/saved_networks/saved_demonstrations/demo_buffer.pkl"
         )

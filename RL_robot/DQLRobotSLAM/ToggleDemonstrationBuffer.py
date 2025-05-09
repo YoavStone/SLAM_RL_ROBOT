@@ -13,7 +13,7 @@ class ToggleDemonstrationBuffer:
     Uses ROS topics for control instead of direct keyboard input.
     """
 
-    def __init__(self, max_demos=50000, demo_batch_ratio=0.3, auto_timeout=300, save_path="src/RL_robot/saved_networks/saved_demonstrations/demo_buffer.pkl"):
+    def __init__(self, max_demos=50000, demo_batch_ratio=0.4, auto_timeout=300, save_path="src/RL_robot/saved_networks/saved_demonstrations/demo_buffer.pkl"):
         self.max_demos = max_demos
         self.demo_batch_ratio = demo_batch_ratio
         self.auto_timeout = auto_timeout
