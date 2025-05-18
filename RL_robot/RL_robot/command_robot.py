@@ -4,6 +4,8 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
+from std_msgs.msg import Empty
+
 import math
 import sys
 import tty
@@ -20,7 +22,8 @@ class BaseToRobot(Node):
         self.cmd_vel_publisher = self.create_publisher(
             Twist,
             'cmd_vel',
-            10)
+            10
+        )
 
         self.tf_broadcaster = TransformBroadcaster(self)
 
@@ -29,7 +32,15 @@ class BaseToRobot(Node):
             Odometry,
             'odom',
             self.odom_callback,
-            10)
+            10
+        )
+
+        # Create publisher for sending velocity commands
+        self.reset_publisher = self.create_publisher(
+            Empty,
+            'reset_robot',
+            10
+        )
 
         # Set default velocities
         self.linear_speed = 0.3  # m/s
@@ -151,6 +162,7 @@ class BaseToRobot(Node):
             # Quit the program
             print('Quitting')
             self.cmd_vel_publisher.publish(twist)
+            self.reset_publisher.publish(Empty())
             self.running = False
             time.sleep(0.2)
             self.context.shutdown()

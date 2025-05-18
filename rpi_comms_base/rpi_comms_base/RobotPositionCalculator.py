@@ -5,8 +5,7 @@ from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.node import Node
 
-from .MotorsSynchronizer import MotorsSynchronizer
-from .MotorsController import MotorsController
+# from .MotorsSynchronizer import MotorsSynchronizer
 
 
 class RobotPositionCalculator:
@@ -95,3 +94,20 @@ class RobotPositionCalculator:
 
         # return the message
         return odom
+
+    def reset(self):
+        """
+        resets the odom
+        """
+        self.motors_synchronizer.reset()
+
+        # Robot pose (x, y, theta)
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
+
+        self.last_right_pos = 0
+        self.last_left_pos = 0
+        self.last_time = time.time()
+
+        print(f'Reset Position: ({self.x:.3f}, {self.y:.3f}, {self.theta:.3f}), R: {self.last_right_pos}, L: {self.last_left_pos}')
