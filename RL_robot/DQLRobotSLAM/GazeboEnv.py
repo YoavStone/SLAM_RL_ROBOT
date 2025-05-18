@@ -9,7 +9,7 @@ import math
 from gymnasium import spaces
 
 from .RewardCalculator import RewardCalculator
-from visualizers.MapVisualizationNode import MapVisualizationNode
+from .DataFilter import DataFilter
 
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
@@ -17,7 +17,9 @@ ANGULAR_SPEED = 1.2  # irl: 0.3  # rad/s
 
 
 class GazeboEnv(Node):
-    """ROS2 Node that interfaces with Gazebo and provides a gym-like environment interface"""
+    """
+    ROS2 Node that interfaces with Gazebo and provides a gym-like environment interface
+    """
 
     def __init__(self, rad_of_robot=0.34):
         super().__init__('gazebo_env_node')
@@ -30,9 +32,8 @@ class GazeboEnv(Node):
 
         self.step_counter = 0
 
-        # cropped map visualizer
-        print("Creating visualization node...")
-        self.vis_node = MapVisualizationNode(publish=False)
+        # create the data filter (crops the map, calcs the location vel and orientation, and extracts the correct lidar scan msgs)
+        self.data_filter = DataFilter(vis_cropped_map=True)
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
@@ -47,9 +48,7 @@ class GazeboEnv(Node):
         self.slam_pose = None  # Store the latest SLAM pose [orientation, x, y]
         self.grid_position = None  # stores position on grid [sin(x), cos(x), x, y]
         self.measured_distance_to_walls = [10.0] * 16  # distances in sixteenths of circle
-        self.last_update_time = time.time()
 
-        self.previous_map = None
         self.map_raw = None
         self.center_cell_x = None
         self.center_cell_y = None
@@ -80,11 +79,20 @@ class GazeboEnv(Node):
 
         print('Gazebo Environment Node initialized')
 
+    def set_obs_space(self, map_size):
+        if self.observation_space is None:
+            self.observation_space = spaces.Box(
+                low=np.array([-1, -1, -100, -100] + [-3, -3] + [0] * 16 + [-1] * map_size),
+                high=np.array([1, 1, 100, 100] + [3, 3] + [13] * 16 + [1] * map_size),
+                dtype=np.float32
+            )
+            # print(f"Observation space initialized with size {self.observation_space}")
+
     def publish_cropped_map(self):
         """Trigger map visualization publication if map data is available"""
         if self.map_processed:
             # If we have valid map data, call the visualization node to publish it
-            self.vis_node.publish_map()
+            self.data_filter.vis_node.publish_map()
 
     def slam_pose_callback(self, msg):
         """Process SLAM pose data"""
@@ -257,19 +265,13 @@ class GazeboEnv(Node):
         self.map_ready = True
 
         # After processing the map, update visualization
-        self.vis_node.set_map(cropped_map, resolution)
+        self.data_filter.vis_node.set_map(cropped_map, resolution)
 
         if self.reward_calculator.get_total_cells() is None:
             self.reward_calculator.set_total_cells(len(cropped_map))
 
         # print("updated map")
-        if self.observation_space is None:
-            self.observation_space = spaces.Box(
-                low=np.array([-1, -1, -100, -100] + [-3, -3] + [0] * 16 + [-1] * len(self.map_processed)),
-                high=np.array([1, 1, 100, 100] + [3, 3] + [13] * 16 + [1] * len(self.map_processed)),
-                dtype=np.float32
-            )
-            # print(f"Observation space initialized with size {obs_size}")
+        self.set_obs_space(len(self.map_processed))
 
     def pos_to_map_pos(self, position):
         """
@@ -408,8 +410,6 @@ class GazeboEnv(Node):
             if time.time() - start_time > timeout:
                 print("Timeout waiting for sensor data during reset")
                 break
-
-        self.last_update_time = time.time()
 
         self.reward_calculator.reward_reset()
 
