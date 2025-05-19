@@ -11,7 +11,7 @@ def calc_map_center(origin_x, origin_y, width, height, resolution, odom_ready, p
         print(f"Updated map center using SLAM pose: ({center_cell_x}, {center_cell_y})")
     elif odom_ready:
         # Fall back to odometry if SLAM not available
-        enter_cell_x = int((pos[1] - origin_x) / resolution)
+        center_cell_x = int((pos[1] - origin_x) / resolution)
         center_cell_y = int((pos[2] - origin_y) / resolution)
         print(f"Updated map center using odometry: ({center_cell_x}, {center_cell_y})")
     else:
