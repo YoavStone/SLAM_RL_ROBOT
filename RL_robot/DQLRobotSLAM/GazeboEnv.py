@@ -12,6 +12,7 @@ from .RewardCalculator import RewardCalculator
 
 from services.map_cropping_service import calc_map_center, crop_map
 from services.lidar_data_filter_service import lidar_scan_filter
+from services.grid_position_calculator import calc_grid_pos
 
 from visualizers.MapVisualizationNode import MapVisualizationNode
 
@@ -209,30 +210,13 @@ class GazeboEnv(Node):
 
         # Only use cropped map info if map_processed is already initialized
         if self.map_processed and self.center_cell_x is not None and self.center_cell_y is not None:
-            # Calculate crop boundaries
             crop_size_cells = int(np.sqrt(len(self.map_processed)))
-            half_size = crop_size_cells // 2
-            min_x = max(0, self.center_cell_x - half_size)
-            min_y = max(0, self.center_cell_y - half_size)
-
-            # Adjust for map boundaries (same logic as in map_callback)
             width = self.map_raw.info.width
             height = self.map_raw.info.height
-            if min_x + crop_size_cells > width:
-                min_x = max(0, width - crop_size_cells)
-            if min_y + crop_size_cells > height:
-                min_y = max(0, height - crop_size_cells)
-
-            # Adjust to coordinates within the cropped map
-            grid_x = grid_x - min_x
-            grid_y = grid_y - min_y
-
-            # Ensure coordinates are within bounds of the cropped map
-            grid_x = max(0, min(crop_size_cells - 1, grid_x))
-            grid_y = max(0, min(crop_size_cells - 1, grid_y))
+            grid_x, grid_y = calc_grid_pos(position, grid_x, grid_y, self.center_cell_x, self.center_cell_y, width, height, crop_size_cells)
 
         # Return with grid position and normalized yaw
-        return [sin_yaw, cos_yaw, float(grid_x), float(grid_y)]
+        return [sin_yaw, cos_yaw, grid_x, grid_y]
 
     def action_to_cmd(self, action):
         """Convert action index to Twist command"""
