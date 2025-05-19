@@ -32,7 +32,7 @@ class SensorsProcessor(Node):
 
         # visualize the cropped map usually for debug
         print("Creating visualization node...")
-        self.vis_node = MapVisualizationNode(publish=True)
+        self.vis_node = MapVisualizationNode(publish=False)
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
@@ -199,7 +199,7 @@ class SensorsProcessor(Node):
         if self.velocities is None:
             self.velocities = [0.0, 0.0]
 
-        print("pos: ", self.grid_position)
+        # print("pos: ", self.grid_position)
         # print("vel: ", self.velocities)
 
         # Return state with grid position
