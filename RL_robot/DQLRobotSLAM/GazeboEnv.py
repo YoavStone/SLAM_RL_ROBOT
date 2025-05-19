@@ -9,7 +9,8 @@ import math
 from gymnasium import spaces
 
 from .RewardCalculator import RewardCalculator
-from .DataFilter import DataFilter
+from .RawDataHandler import RawDataHandler
+from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
 LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
@@ -33,7 +34,11 @@ class GazeboEnv(Node):
         self.step_counter = 0
 
         # create the data filter (crops the map, calcs the location vel and orientation, and extracts the correct lidar scan msgs)
-        self.data_filter = DataFilter(vis_cropped_map=True)
+        self.raw_data_handler = RawDataHandler()
+
+        # visualize the cropped map usually for debug
+        print("Creating visualization node...")
+        self.vis_node = MapVisualizationNode(publish=True)
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
@@ -92,7 +97,7 @@ class GazeboEnv(Node):
         """Trigger map visualization publication if map data is available"""
         if self.map_processed:
             # If we have valid map data, call the visualization node to publish it
-            self.data_filter.vis_node.publish_map()
+            self.vis_node.publish_map()
 
     def slam_pose_callback(self, msg):
         """Process SLAM pose data"""
@@ -160,115 +165,28 @@ class GazeboEnv(Node):
         self.odom_ready = True
 
     def map_callback(self, msg):
-        """Process SLAM map data by cropping a 6m x 6m area centered on the robot's starting position"""
-        # Store raw map data
         self.map_raw = msg
-
         # Extract map metadata
         resolution = msg.info.resolution  # Typically 0.05m or similar. for me now its 0.15m
         width = msg.info.width
         height = msg.info.height
         origin_x = msg.info.origin.position.x
         origin_y = msg.info.origin.position.y
-
-        # Calculate size of 6m x 6m area in grid cells (maintaining resolution)
-        crop_size_meters = 6.0  # 6m x 6m area
-        crop_size_cells = int(crop_size_meters / resolution)
-
-        # Ensure crop_size_cells is even for better centering
-        if crop_size_cells % 2 != 0:
-            crop_size_cells += 1
-
+        
         # Store the center position (robot starting position) if not already stored
         if self.should_update_center:
-            # Use SLAM pose if available for better initial position
-            if self.slam_pose is not None:
-                # Convert SLAM position to grid cell coordinates
-                self.center_cell_x = int((self.slam_pose[1] - origin_x) / resolution)
-                self.center_cell_y = int((self.slam_pose[2] - origin_y) / resolution)
-                print(f"Updated map center using SLAM pose: ({self.center_cell_x}, {self.center_cell_y})")
-            elif self.odom_ready:
-                # Fall back to odometry if SLAM not available
-                self.center_cell_x = int((self.pos[1] - origin_x) / resolution)
-                self.center_cell_y = int((self.pos[2] - origin_y) / resolution)
-                print(f"Updated map center using odometry: ({self.center_cell_x}, {self.center_cell_y})")
-            else:
-                # If no position data, use the center of the map
-                self.center_cell_x = width // 2
-                self.center_cell_y = height // 2
-                print(f"Updated map center using map center: ({self.center_cell_x}, {self.center_cell_y})")
-
+            self.center_cell_x, self.center_cell_y = self.raw_data_handler.calc_map_center(origin_x, origin_y, width, height, resolution, self.odom_ready, self.pos, self.slam_pose)
             # Reset the flag so we don't update center again until next reset
             self.should_update_center = False
 
-        # Calculate boundaries for cropping
-        half_size = crop_size_cells // 2
-        min_x = max(0, self.center_cell_x - half_size)
-        min_y = max(0, self.center_cell_y - half_size)
-
-        # Instead of truncating at the edge, we shift the window to fully fit within bounds
-        if min_x + crop_size_cells > width:
-            min_x = max(0, width - crop_size_cells)
-        if min_y + crop_size_cells > height:
-            min_y = max(0, height - crop_size_cells)
-
-        # Calculate max coordinates based on the fixed crop size
-        max_x = min_x + crop_size_cells
-        max_y = min_y + crop_size_cells
-
-        # Debug output
-        # print(f"Cropping map: [{min_x}:{max_x}, {min_y}:{max_y}] from original {width}x{height}")
-        # print(f"Crop dimensions: {max_x - min_x}x{max_y - min_y}")
-
-        # Create empty cropped map with the correct size
-        cropped_map = []
-
-        # Extract the map data cells, ensuring we stay in bounds
-        for y in range(min_y, max_y):
-            row_data = []  # Store row for debugging
-            for x in range(min_x, max_x):
-                if 0 <= y < height and 0 <= x < width:
-                    idx = y * width + x
-                    if idx < len(msg.data):
-                        if msg.data[idx] == -1:  # Unknown
-                            cell_value = -1.0
-                        else:  # 0-100 scale to 0-1
-                            cell_value = float(msg.data[idx]) / 100.0
-                    else:
-                        # This should not happen if our bounds checking is correct
-                        cell_value = -1.0
-                        print(f"Warning: Index {idx} out of bounds for msg.data (len={len(msg.data)}) !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! shouldnt happen prob bug in crop map, has never happened before")
-                else:
-                    # Out of bounds of the original map
-                    cell_value = -1.0
-                    # print(f"Warning: Coordinates ({x},{y}) out of bounds for original map {width}x{height}")
-
-                cropped_map.append(cell_value)
-                row_data.append(cell_value)
-
-            # Debug: print first and last row
-            # if y == min_y or y == max_y - 1:
-            #     print(f"Row {y - min_y} data sample: {row_data[:5]}...")
-
-        # Verify the size of the cropped map
-        expected_size = crop_size_cells * crop_size_cells
-        actual_size = len(cropped_map)
-        if actual_size != expected_size:
-            # print(f"WARNING: Unexpected cropped map size. Expected {expected_size}, got {actual_size}")
-            # Ensure correct size by padding/truncating if needed
-            if actual_size < expected_size:
-                cropped_map.extend([-1.0] * (expected_size - actual_size))
-            else:
-                cropped_map = cropped_map[:expected_size]
-
-        self.map_processed = cropped_map
+        self.map_processed = self.raw_data_handler.crop_map(msg.data, width, height, resolution, self.center_cell_x, self.center_cell_y)
         self.map_ready = True
 
         # After processing the map, update visualization
-        self.data_filter.vis_node.set_map(cropped_map, resolution)
+        self.vis_node.set_map(self.map_processed, resolution)
 
         if self.reward_calculator.get_total_cells() is None:
-            self.reward_calculator.set_total_cells(len(cropped_map))
+            self.reward_calculator.set_total_cells(len(self.map_processed))
 
         # print("updated map")
         self.set_obs_space(len(self.map_processed))
@@ -288,8 +206,7 @@ class GazeboEnv(Node):
 
         # Check if map info is available
         if self.map_raw is None:
-            print(
-                "________________________ NO MAP RAW USING NORMAL POS IF HAPPENS HORRIBLE BUG BUT ONCE IS PROBABLY FINE ________________________")
+            print("________________________ NO MAP RAW USING NORMAL POS IF HAPPENS HORRIBLE BUG BUT ONCE IS PROBABLY FINE ________________________")
             return [sin_yaw, cos_yaw, x, y]  # Return position with normalized yaw if no map info
 
         # Get map metadata

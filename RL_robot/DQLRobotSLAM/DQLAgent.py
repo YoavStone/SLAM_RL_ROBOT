@@ -27,7 +27,7 @@ BATCH_SIZE = 64
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
-EPSILON_END = 0.05
+EPSILON_END = 0.025
 EPSILON_DECAY = 250000  # Steps over which epsilon decays
 TARGET_UPDATE_FREQ = 2500  # Steps between updating the target network
 
