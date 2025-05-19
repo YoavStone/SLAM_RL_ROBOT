@@ -3,18 +3,39 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 import time
+import numpy as np
+
+from gymnasium import spaces
 
 from sim_control.SimulationResetHandler import SimulationResetHandler
+
+from .RewardCalculator import RewardCalculator
 from .GazeboEnv import GazeboEnv
+
+
+LINEAR_SPEED = 0.3  # m/s
+ANGULAR_SPEED = 1.2  # rad/s
+
+ROBOT_RAD_SAFE_FACTOR = 1.3
+
+res = 0.15
+width = 6.0
+height = 6.0
+MAP_SIZE = int((width / res) * (height / res))
 
 
 class DQLEnv:
     """Adapter class that bridges between GazeboEnv and the DQL agent"""
 
     def __init__(self, is_sim=True, rad_of_robot=0.34):
+
+        # Robot properties
+        self.rad_of_robot = rad_of_robot * ROBOT_RAD_SAFE_FACTOR  # radius from lidar to tip with safety margin
+
         self.is_sim = is_sim
+
         # Initialize ROS node for environment
-        self.gazebo_env = GazeboEnv(rad_of_robot=rad_of_robot)
+        self.gazebo_env = GazeboEnv()
 
         if self.is_sim:
             self.reset_handler = SimulationResetHandler(self.gazebo_env)
@@ -25,15 +46,27 @@ class DQLEnv:
         for _ in range(10):
             rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
 
-        # Properties needed by DQL agent
-        self.observation_space = None
-        self.action_space = self.gazebo_env.action_space
+        # Properties needed by DQL agent. Gym-like interface variables
         self.actions = self.gazebo_env.actions
-        self.rad_of_robot = self.gazebo_env.rad_of_robot
+        self.action_space = spaces.Discrete(len(self.actions))
+        print("action space: ", self.action_space)
+        self.observation_space = None
+        self.set_obs_space()
+
+        self.reward_calculator = RewardCalculator(LINEAR_SPEED, self.rad_of_robot)
 
         # Track episode state
         self.current_episode_reward = 0.0
         self.step_count = 0
+
+    def set_obs_space(self):
+        if self.observation_space is None:
+            self.observation_space = spaces.Box(
+                low=np.array([-1, -1, -100, -100] + [-3, -3] + [0] * 16 + [-1] * MAP_SIZE),
+                high=np.array([1, 1, 100, 100] + [3, 3] + [13] * 16 + [1] * MAP_SIZE),
+                dtype=np.float32
+            )
+            print(f"Observation space initialized with size {self.observation_space}")
 
     def get_state_size(self):
         return self.gazebo_env.get_state_size()
@@ -45,8 +78,7 @@ class DQLEnv:
         return self.gazebo_env.get_state()
 
     def update_observation_space(self):
-        if self.gazebo_env.observation_space is not None:
-            self.observation_space = self.gazebo_env.observation_space
+        if self.observation_space is not None:
             return True
         return False
 
@@ -74,7 +106,7 @@ class DQLEnv:
         new_state = self.gazebo_env.get_state()
 
         # Calculate reward for this step
-        reward, terminated = self.gazebo_env.reward_calculator.calc_reward(
+        reward, terminated = self.reward_calculator.calc_reward(
             0.1,  # Fixed time step of 0.1 seconds
             self.gazebo_env.measured_distance_to_walls,
             self.gazebo_env.map_processed,
@@ -93,7 +125,7 @@ class DQLEnv:
 
         # Check if this is a self-termination (e.g., step limit or map completion)
         if not terminated:
-            truncated = self.gazebo_env.reward_calculator.check_steps_and_map_completion()
+            truncated = self.reward_calculator.check_steps_and_map_completion()
 
         # Only call the reset handler if something ended the episode
         is_done = terminated or truncated
@@ -160,7 +192,12 @@ class DQLEnv:
                 rclpy.spin_once(self.gazebo_env, timeout_sec=0.1)
 
         time.sleep(0.5)  # so everything has time to reset / if not sim than so it wont try to move to much after hitting wall
+
         self.gazebo_env.reset()
+
+        self.reward_calculator.reward_reset()
+
+        self.reward_calculator.set_total_cells(MAP_SIZE)
 
         # Now that reset is done, get the new state
         return self.get_state(), {}

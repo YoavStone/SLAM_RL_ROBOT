@@ -6,9 +6,6 @@ from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 import numpy as np
 import time
 import math
-from gymnasium import spaces
-
-from .RewardCalculator import RewardCalculator
 
 from services.map_cropping_service import calc_map_center, crop_map
 from services.lidar_data_filter_service import lidar_scan_filter
@@ -17,8 +14,8 @@ from services.grid_position_calculator import calc_grid_pos
 from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
-LINEAR_SPEED = 0.3  # irl: 0.3  # m/s
-ANGULAR_SPEED = 1.2  # irl: 0.3  # rad/s
+LINEAR_SPEED = 0.3  # m/s
+ANGULAR_SPEED = 1.2  # rad/s
 
 
 class GazeboEnv(Node):
@@ -26,7 +23,7 @@ class GazeboEnv(Node):
     ROS2 Node that interfaces with Gazebo and provides a gym-like environment interface
     """
 
-    def __init__(self, rad_of_robot=0.34):
+    def __init__(self):
         super().__init__('gazebo_env_node')
 
         self.declare_parameter('spawn_location', '')  # Default: empty string means random
@@ -43,9 +40,6 @@ class GazeboEnv(Node):
         # Create timer to periodically publish the map
         self.pub_crop_timer = self.create_timer(1.0, self.publish_cropped_map)
         print("Visualization node created")
-
-        # Robot properties
-        self.rad_of_robot = rad_of_robot * 1.3  # radius from lidar to tip with safety margin
 
         # Environment state
         self.map_processed = []  # Processed map data for DQL input
@@ -71,28 +65,13 @@ class GazeboEnv(Node):
         self.map_sub = self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
         self.slam_pose_sub = self.create_subscription(PoseWithCovarianceStamped, '/pose', self.slam_pose_callback, 10)
 
-        # Gym-like interface variables
-        self.observation_space = None  # Will be initialized after first data is received
-        self.action_space = spaces.Discrete(len(self.actions))
-
         # Data ready flags
         self.scan_ready = False
         self.odom_ready = False
         self.map_ready = False
         self.slam_pose_ready = False
 
-        self.reward_calculator = RewardCalculator(LINEAR_SPEED, self.rad_of_robot)
-
         print('Gazebo Environment Node initialized')
-
-    def set_obs_space(self, map_size):
-        if self.observation_space is None:
-            self.observation_space = spaces.Box(
-                low=np.array([-1, -1, -100, -100] + [-3, -3] + [0] * 16 + [-1] * map_size),
-                high=np.array([1, 1, 100, 100] + [3, 3] + [13] * 16 + [1] * map_size),
-                dtype=np.float32
-            )
-            # print(f"Observation space initialized with size {self.observation_space}")
 
     def publish_cropped_map(self):
         """Trigger map visualization publication if map data is available"""
@@ -175,11 +154,7 @@ class GazeboEnv(Node):
         # After processing the map, update visualization
         self.vis_node.set_map(self.map_processed, resolution)
 
-        if self.reward_calculator.get_total_cells() is None:
-            self.reward_calculator.set_total_cells(len(self.map_processed))
-
         # print("updated map")
-        self.set_obs_space(len(self.map_processed))
 
     def pos_to_map_pos(self, position):
         """
@@ -300,7 +275,5 @@ class GazeboEnv(Node):
             if time.time() - start_time > timeout:
                 print("Timeout waiting for sensor data during reset")
                 break
-
-        self.reward_calculator.reward_reset()
 
         return self.get_state(), {}  # Return state and empty info dict (gym-like interface)
