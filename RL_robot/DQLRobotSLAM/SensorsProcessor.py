@@ -136,7 +136,7 @@ class SensorsProcessor(Node):
         height = msg.info.height
         origin_x = msg.info.origin.position.x
         origin_y = msg.info.origin.position.y
-        
+
         # Store the center position (robot starting position) if not already stored
         if self.should_update_center:
             self.center_cell_x, self.center_cell_y = calc_map_center(origin_x, origin_y, width, height, resolution, self.odom_ready, self.pos, self.slam_pose)
@@ -167,7 +167,7 @@ class SensorsProcessor(Node):
         # Check if map info is available
         if self.map_raw is None:
             print("________________________ NO MAP RAW USING NORMAL POS IF HAPPENS HORRIBLE BUG BUT ONCE IS PROBABLY FINE ________________________")
-            return [sin_yaw, cos_yaw, x, y]  # Return position with normalized yaw if no map info
+            return [sin_yaw, cos_yaw, 20, 20]  # Return position with normalized yaw if no map info
 
         # Get map metadata
         resolution = self.map_raw.info.resolution
@@ -199,7 +199,7 @@ class SensorsProcessor(Node):
         if self.velocities is None:
             self.velocities = [0.0, 0.0]
 
-        # print("pos: ", self.grid_position)
+        print("pos: ", self.grid_position)
         # print("vel: ", self.velocities)
 
         # Return state with grid position

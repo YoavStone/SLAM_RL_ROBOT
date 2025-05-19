@@ -1,18 +1,7 @@
 def calc_grid_pos(position, grid_x, grid_y, center_cell_x, center_cell_y, width, height, crop_size_cells):
     """
-    Convert world position coordinates to grid cell coordinates
-    Args:
-        position: [yaw, x, y] in world coordinates
-    Returns:
-        [grid_x, grid_y] with grid coordinates relative to the map
-        :param position:
-        :param grid_x:
-        :param grid_y:
-        :param center_cell_x:
-        :param center_cell_y:
-        :param width:
-        :param crop_size_cells:
-        :param height:
+    Places the robot at a consistent position in the cropped map based on
+    its offset from the center position
     """
     _, x, y = position
 
