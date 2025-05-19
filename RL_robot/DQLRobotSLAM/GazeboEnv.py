@@ -9,7 +9,10 @@ import math
 from gymnasium import spaces
 
 from .RewardCalculator import RewardCalculator
-from services.map_cropping_service import *
+
+from services.map_cropping_service import calc_map_center, crop_map
+from services.lidar_data_filter_service import lidar_scan_filter
+
 from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
@@ -118,19 +121,8 @@ class GazeboEnv(Node):
         """Process laser scan data"""
         # Divide the scan into 16 sectors and get min distance for each sector
         ranges = np.array(msg.ranges)
-        valid_ranges = np.where(np.isfinite(ranges), ranges, msg.range_max)
 
-        # Split the scan into 16 equal sectors
-        num_sectors = 16
-        sector_size = len(valid_ranges) // num_sectors
-
-        self.measured_distance_to_walls = []
-        for i in range(num_sectors):
-            start_idx = i * sector_size
-            end_idx = (i + 1) * sector_size if i < num_sectors - 1 else len(valid_ranges)
-            sector_ranges = valid_ranges[start_idx:end_idx]
-            min_distance = np.min(sector_ranges)
-            self.measured_distance_to_walls.append(float(min_distance))
+        self.measured_distance_to_walls = lidar_scan_filter(ranges, msg.range_max)
 
         self.scan_ready = True
 
