@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid, Odometry
-from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped
 import numpy as np
 import time
 import math
@@ -14,17 +14,13 @@ from services.grid_position_calculator import calc_grid_pos
 from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
-LINEAR_SPEED = 0.3  # m/s
-ANGULAR_SPEED = 1.2  # rad/s
-
-
-class GazeboEnv(Node):
+class SensorsProcessor(Node):
     """
     ROS2 Node that interfaces with Gazebo and provides a gym-like environment interface
     """
 
     def __init__(self):
-        super().__init__('gazebo_env_node')
+        super().__init__('sensors_processor')
 
         self.declare_parameter('spawn_location', '')  # Default: empty string means random
 
@@ -59,7 +55,6 @@ class GazeboEnv(Node):
         self.actions = [0, 1, 2, 3, 4]
 
         # Publishers and subscribers
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.map_sub = self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
@@ -193,28 +188,6 @@ class GazeboEnv(Node):
         # Return with grid position and normalized yaw
         return [sin_yaw, cos_yaw, grid_x, grid_y]
 
-    def action_to_cmd(self, action):
-        """Convert action index to Twist command"""
-        cmd = Twist()
-
-        if action == 0:  # Stop
-            pass  # All values are initialized to 0
-        elif action == 1:  # Forward
-            cmd.linear.x = LINEAR_SPEED
-        elif action == 2:  # Back
-            cmd.linear.x = -LINEAR_SPEED
-        elif action == 3:  # Right
-            cmd.angular.z = -ANGULAR_SPEED
-        elif action == 4:  # Left
-            cmd.angular.z = ANGULAR_SPEED
-
-        return cmd
-
-    def execute_action(self, action):
-        """Execute action by publishing to cmd_vel"""
-        cmd = self.action_to_cmd(action)
-        self.cmd_vel_pub.publish(cmd)
-
     def get_state(self):
         """Get the current state representation with position converted to grid cell coordinates"""
         # Use SLAM pose if available, otherwise fall back to odometry
@@ -254,10 +227,6 @@ class GazeboEnv(Node):
         self.slam_pose = None
         self.grid_position = None
         self.velocities = None
-
-        # Send stop command
-        stop_cmd = Twist()
-        self.cmd_vel_pub.publish(stop_cmd)
 
         # IMPORTANT: Explicitly reset the previous map to ensure exploration rewards start fresh
         self.map_raw = None

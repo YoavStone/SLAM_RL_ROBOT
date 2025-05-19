@@ -14,11 +14,12 @@ class SimulationResetHandler:
     with proper thread management and improved teleport commands.
     """
 
-    def __init__(self, env):
+    def __init__(self, sensors_processor, cmd_publisher):
         """Initialize with reference to the environment"""
         # Store environment reference
-        self.env = env
-        self.logger = env.get_logger()
+        self.sensors_processor = sensors_processor
+        self.cmd_publisher = cmd_publisher
+        self.logger = sensors_processor.get_logger()
         self.logger.info("SimulationResetHandler initializing...")
 
         # Reset state with manual lock
@@ -34,16 +35,16 @@ class SimulationResetHandler:
         self.world_name = 'empty'
 
         # Predefined positions for teleportation
-        staring_pos = self.env.get_parameter('spawn_location').value
+        staring_pos = self.sensors_processor.get_parameter('spawn_location').value
         self.spawn_position_handler = SpawnPositionHandler(staring_pos)
 
         # SLAM reset client
-        self.clear_slam_map_client = self.env.create_client(
+        self.clear_slam_map_client = self.sensors_processor.create_client(
             Reset,
             '/slam_toolbox/reset'
         )
 
-        self.env.teleport_pub = self.env.create_publisher(
+        self.sensors_processor.teleport_pub = self.sensors_processor.create_publisher(
             String,
             '/teleport_command',
             10
@@ -69,8 +70,7 @@ class SimulationResetHandler:
             self.logger.info("Reset thread started")
 
             # Stop the robot first
-            stop_cmd = Twist()
-            self.env.cmd_vel_pub.publish(stop_cmd)
+            self.cmd_publisher.execute_action(0)
             time.sleep(0.5)
 
             # For first episode, skip odometry correction
@@ -97,8 +97,7 @@ class SimulationResetHandler:
         self.logger.info("Starting odometry correction")
 
         # First send stop command to ensure the robot is stationary
-        stop_cmd = Twist()
-        self.env.cmd_vel_pub.publish(stop_cmd)
+        self.cmd_publisher.execute_action(0)
         time.sleep(0.5)
 
         # Maximum time to allow for odometry correction
@@ -111,14 +110,14 @@ class SimulationResetHandler:
         # Continue until time limit or position & orientation are corrected
         while time.time() - start_time < max_correction_time:
             # Check if odometry data is available
-            if self.env.current_odom is None:
+            if self.sensors_processor.current_odom is None:
                 self.logger.warn("No odometry data available for correction")
                 time.sleep(0.5)
                 continue
 
             # Get current position and orientation
-            current_x = self.env.current_odom.pose.pose.position.x
-            current_y = self.env.current_odom.pose.pose.position.y
+            current_x = self.sensors_processor.current_odom.pose.pose.position.x
+            current_y = self.sensors_processor.current_odom.pose.pose.position.y
             current_yaw = self.get_current_yaw()
 
             # Create velocity command
@@ -136,8 +135,7 @@ class SimulationResetHandler:
                     correction_phase = 'yaw'
 
                     # Stop the robot before yaw correction
-                    stop_cmd = Twist()
-                    self.env.cmd_vel_pub.publish(stop_cmd)
+                    self.cmd_publisher.execute_action(0)
                     time.sleep(0.5)
 
                     continue  # Skip to next iteration
@@ -185,8 +183,7 @@ class SimulationResetHandler:
                     self.logger.info(f"Reached target yaw: {current_yaw:.3f}")
 
                     # Stop the robot
-                    stop_cmd = Twist()
-                    self.env.cmd_vel_pub.publish(stop_cmd)
+                    self.cmd_publisher.execute_action(0)
                     time.sleep(0.5)
 
                     # Once odom is corrected, teleport the robot
@@ -202,7 +199,7 @@ class SimulationResetHandler:
                     cmd.angular.z = 0.3 if cmd.angular.z > 0 else -0.3
 
             # Publish command
-            self.env.cmd_vel_pub.publish(cmd)
+            self.cmd_publisher.cmd_vel_pub.publish(cmd)
 
             # Brief sleep to allow time for movement
             time.sleep(0.1)
@@ -213,14 +210,14 @@ class SimulationResetHandler:
 
     def get_current_yaw(self):
         """Extract yaw angle from quaternion orientation"""
-        if self.env.current_odom is None:
+        if self.sensors_processor.current_odom is None:
             return 0.0
 
         # Get quaternion components
-        qx = self.env.current_odom.pose.pose.orientation.x
-        qy = self.env.current_odom.pose.pose.orientation.y
-        qz = self.env.current_odom.pose.pose.orientation.z
-        qw = self.env.current_odom.pose.pose.orientation.w
+        qx = self.sensors_processor.current_odom.pose.pose.orientation.x
+        qy = self.sensors_processor.current_odom.pose.pose.orientation.y
+        qz = self.sensors_processor.current_odom.pose.pose.orientation.z
+        qw = self.sensors_processor.current_odom.pose.pose.orientation.w
 
         # Convert to yaw angle
         siny_cosp = 2.0 * (qw * qz + qx * qy)
@@ -247,7 +244,7 @@ class SimulationResetHandler:
         msg.data = teleport_cmd
 
         # Publish the command to the teleport service
-        self.env.teleport_pub.publish(msg)
+        self.sensors_processor.teleport_pub.publish(msg)
 
         # Wait for the teleport to complete
         time.sleep(3.0)
@@ -281,7 +278,7 @@ class SimulationResetHandler:
                         self.logger.info("SLAM map reset successful")
                         return True
                 time.sleep(0.1)  # Small sleep to avoid tight loop
-                rclpy.spin_once(self.env, timeout_sec=0.05)
+                rclpy.spin_once(self.sensors_processor, timeout_sec=0.05)
 
             # If we get here, the service call timed out
             self.logger.warn(f"SLAM reset service call timed out after {timeout_sec}s")

@@ -83,7 +83,7 @@ class DQLAgent(Node):
                 break
             else:
                 # Allow ROS callbacks in the environment node to process
-                rclpy.spin_once(self.env.gazebo_env, timeout_sec=0.1)
+                rclpy.spin_once(self.env.sensors_processor, timeout_sec=0.1)
                 self.get_logger().info("Waiting for observation space to be initialized...", throttle_duration_sec=2.0)
                 time.sleep(0.5)
 
