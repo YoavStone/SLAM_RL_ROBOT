@@ -9,7 +9,7 @@ import math
 from gymnasium import spaces
 
 from .RewardCalculator import RewardCalculator
-from .RawDataHandler import RawDataHandler
+from services.map_cropping_service import *
 from visualizers.MapVisualizationNode import MapVisualizationNode
 
 
@@ -32,9 +32,6 @@ class GazeboEnv(Node):
         self.get_logger().info(f"Received parameters: spawn_location='{self.spawn_location_str}'")
 
         self.step_counter = 0
-
-        # create the data filter (crops the map, calcs the location vel and orientation, and extracts the correct lidar scan msgs)
-        self.raw_data_handler = RawDataHandler()
 
         # visualize the cropped map usually for debug
         print("Creating visualization node...")
@@ -175,11 +172,11 @@ class GazeboEnv(Node):
         
         # Store the center position (robot starting position) if not already stored
         if self.should_update_center:
-            self.center_cell_x, self.center_cell_y = self.raw_data_handler.calc_map_center(origin_x, origin_y, width, height, resolution, self.odom_ready, self.pos, self.slam_pose)
+            self.center_cell_x, self.center_cell_y = calc_map_center(origin_x, origin_y, width, height, resolution, self.odom_ready, self.pos, self.slam_pose)
             # Reset the flag so we don't update center again until next reset
             self.should_update_center = False
 
-        self.map_processed = self.raw_data_handler.crop_map(msg.data, width, height, resolution, self.center_cell_x, self.center_cell_y)
+        self.map_processed = crop_map(msg.data, width, height, resolution, self.center_cell_x, self.center_cell_y)
         self.map_ready = True
 
         # After processing the map, update visualization

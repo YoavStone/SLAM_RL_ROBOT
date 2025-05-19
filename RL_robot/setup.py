@@ -39,6 +39,10 @@ setup(
          glob(os.path.join('rviz/*'))),
 
         (os.path.join(
+            'share', package_name, 'services/'),
+         glob(os.path.join('services/*'))),
+
+        (os.path.join(
          'share', package_name, 'sim_control/'),
          glob(os.path.join('sim_control/*'))),
 
