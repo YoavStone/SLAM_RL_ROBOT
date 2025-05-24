@@ -68,6 +68,33 @@ class SensorsProcessor(Node):
 
         print('Sensor Node initialized')
 
+    # --------------------- #
+    #   getters & setters   #
+    # --------------------- #
+
+    def get_actions(self):
+        return self.actions
+
+    def get_measured_distance_to_walls(self):
+        return self.measured_distance_to_walls
+
+    def get_map_processed(self):
+        return self.map_processed
+
+    def get_grid_position(self):
+        return self.grid_position
+
+    def get_pos(self):
+        return self.pos
+
+    def get_current_odom(self):
+        return self.current_odom
+
+    def set_step_counter(self, count):
+        self.step_counter = count
+
+    # --------------------- # --------------------- # --------------------- #
+
     def publish_cropped_map(self):
         """Trigger map visualization publication if map data is available"""
         if self.map_processed:

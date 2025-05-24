@@ -50,7 +50,7 @@ class DQLEnv:
             rclpy.spin_once(self.sensors_processor, timeout_sec=0.1)
 
         # Properties needed by DQL agent. Gym-like interface variables
-        self.actions = self.sensors_processor.actions
+        self.actions = self.sensors_processor.get_actions()
         self.action_space = spaces.Discrete(len(self.actions))
         print("action space: ", self.action_space)
         self.observation_space = None
@@ -111,17 +111,17 @@ class DQLEnv:
         # Calculate reward for this step
         reward, terminated = self.reward_calculator.calc_reward(
             0.1,  # Fixed time step of 0.1 seconds
-            self.sensors_processor.measured_distance_to_walls,
-            self.sensors_processor.map_processed,
-            self.sensors_processor.grid_position,
-            self.sensors_processor.pos,
+            self.sensors_processor.get_measured_distance_to_walls(),
+            self.sensors_processor.get_map_processed(),
+            self.sensors_processor.get_grid_position(),
+            self.sensors_processor.get_pos(),
             action
         )
 
         # Track episode reward
         self.current_episode_reward += reward
         self.step_count += 1
-        self.sensors_processor.step_counter = self.step_count
+        self.sensors_processor.set_step_counter(self.step_count)
 
         # Let the reset handler evaluate if we need a reset
         truncated = False
@@ -144,14 +144,14 @@ class DQLEnv:
         Returns initial state and empty info dict.
         """
         # Check if we've received initial odometry data
-        if self.sensors_processor.current_odom is None:
+        if self.sensors_processor.get_current_odom() is None:
             self.sensors_processor.get_logger().info("Waiting for initial odometry data before reset...")
 
             # Wait for a brief period for initial data, then proceed anyway
             start_time = time.time()
             timeout = 5.0  # 5 second timeout
 
-            while self.sensors_processor.current_odom is None:
+            while self.sensors_processor.get_current_odom() is None:
                 rclpy.spin_once(self.sensors_processor, timeout_sec=0.1)
 
                 if time.time() - start_time > timeout:
