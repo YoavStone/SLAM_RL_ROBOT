@@ -13,6 +13,12 @@ import termios
 import threading
 import time
 
+# Constants for robot vel
+from constants.constants import (
+    LINEAR_SPEED,
+    ANGULAR_SPEED,
+)
+
 
 class BaseToRobot(Node):
     def __init__(self):
@@ -41,10 +47,6 @@ class BaseToRobot(Node):
             'reset_robot',
             10
         )
-
-        # Set default velocities
-        self.linear_speed = 0.3  # m/s
-        self.angular_speed = 1.2  # rad/s
 
         # Store latest position and orientation
         self.current_x = 0.0
@@ -144,16 +146,16 @@ class BaseToRobot(Node):
 
         # Set linear and angular velocity based on key pressed
         if key == 'w':
-            twist.linear.x = self.linear_speed
+            twist.linear.x = LINEAR_SPEED
             print('Moving forward')
         elif key == 's':
-            twist.linear.x = -self.linear_speed
+            twist.linear.x = -LINEAR_SPEED
             print('Moving backward')
         elif key == 'a':
-            twist.angular.z = self.angular_speed
+            twist.angular.z = ANGULAR_SPEED
             print('Turning left')
         elif key == 'd':
-            twist.angular.z = -self.angular_speed
+            twist.angular.z = -ANGULAR_SPEED
             print('Turning right')
         elif key == 'x':
             # Stop the robot

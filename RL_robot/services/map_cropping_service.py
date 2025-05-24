@@ -1,4 +1,7 @@
-CROP_SIZE_METERS = 6.0  # 6m x 6m area
+# Constants for map calculations
+from constants.constants import (
+    CROP_SIZE_METERS
+)
 
 
 def calc_map_center(origin_x, origin_y, width, height, resolution, odom_ready, pos, slam_pose):

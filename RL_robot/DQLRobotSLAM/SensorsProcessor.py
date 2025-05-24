@@ -16,7 +16,7 @@ from visualizers.MapVisualizationNode import MapVisualizationNode
 
 class SensorsProcessor(Node):
     """
-    ROS2 Node that interfaces with Gazebo and provides a gym-like environment interface
+    ROS2 Node that interfaces with sensor readings for the gym-like environment
     """
 
     def __init__(self):
@@ -66,7 +66,7 @@ class SensorsProcessor(Node):
         self.map_ready = False
         self.slam_pose_ready = False
 
-        print('Gazebo Environment Node initialized')
+        print('Sensor Node initialized')
 
     def publish_cropped_map(self):
         """Trigger map visualization publication if map data is available"""
@@ -214,7 +214,7 @@ class SensorsProcessor(Node):
         return len(self.actions)
 
     def reset(self):
-        """Reset the environment - in Gazebo this would typically involve resetting the simulation"""
+        """Reset the sensor processor members"""
         # Reset flags
         self.scan_ready = False
         self.odom_ready = False

@@ -3,8 +3,11 @@ import rclpy
 from rclpy.node import Node
 
 
-LINEAR_SPEED = 0.3  # m/s
-ANGULAR_SPEED = 1.2  # rad/s
+# Constants for robot vel
+from constants.constants import (
+    LINEAR_SPEED,
+    ANGULAR_SPEED,
+)
 
 
 def action_to_cmd(action):

@@ -4,18 +4,19 @@ import math
 
 from visualizers.RewardVisualizer import RewardVisualizer
 
-
-# Constants
-CONTINUES_PUNISHMENT = -0.9  # amount of punishment for every sec
-INCOMPLETE_MAP_PUNISHMENT = 5
-HIT_WALL_PUNISHMENT = -500.0
-CLOSE_TO_WALL_PUNISHMENT = 0.35  # calc dis to wall pun = calced punishment by dis to wall*CLOSE_TO_WALL_PUNISHMENT
-WALL_POWER = 6.5
-EXPLORATION_REWARD = 3.5  # reward for every newly discovered cell
-MOVEMENT_REWARD = 0.7  # reward for moving beyond a threshold (so it wont stay in place)
-REVISIT_PENALTY = -0.17  # punishment for revisiting a cell in the map
-REMEMBER_VISIT_TIME = 1.5  # how long to keep the visit time of a spot so it counts as visited in seconds
-GO_BACK_PUNISH = -0.4  # punishment for going backwards
+# Constants for rewards
+from constants.constants import (
+    CONTINUES_PUNISHMENT,
+    INCOMPLETE_MAP_PUNISHMENT,
+    HIT_WALL_PUNISHMENT,
+    CLOSE_TO_WALL_PUNISHMENT,
+    WALL_POWER,
+    EXPLORATION_REWARD,
+    MOVEMENT_REWARD,
+    REVISIT_PENALTY,
+    REMEMBER_VISIT_TIME,
+    GO_BACK_PUNISH
+)
 
 
 class RewardCalculator:

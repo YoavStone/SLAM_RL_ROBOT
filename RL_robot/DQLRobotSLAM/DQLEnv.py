@@ -13,22 +13,23 @@ from .RewardCalculator import RewardCalculator
 from .SensorsProcessor import SensorsProcessor
 from .CommandPublisher import CommandPublisher
 
-
-LINEAR_SPEED = 0.3  # m/s
-ANGULAR_SPEED = 1.2  # rad/s
-
-ROBOT_RAD_SAFE_FACTOR = 1.3
-
-res = 0.15
-width = 6.0
-height = 6.0
-MAP_SIZE = int((width / res) * (height / res))
+# Constants for env's map robot and vel
+from constants.constants import (
+    LINEAR_SPEED,
+    ANGULAR_SPEED,
+    RAD_OF_ROBOT,
+    ROBOT_RAD_SAFE_FACTOR,
+    MAP_SIZE
+)
 
 
 class DQLEnv:
-    """Adapter class that bridges between GazeboEnv and the DQL agent"""
+    """
+    Adapter class that bridges between GazeboEnv and the DQL agent
+    And provides AI GYM like interface for the agent
+    """
 
-    def __init__(self, is_sim=True, rad_of_robot=0.34):
+    def __init__(self, is_sim=True, rad_of_robot=RAD_OF_ROBOT):
 
         # Robot properties
         self.rad_of_robot = rad_of_robot * ROBOT_RAD_SAFE_FACTOR  # radius from lidar to tip with safety margin

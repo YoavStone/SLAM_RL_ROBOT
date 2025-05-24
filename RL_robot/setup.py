@@ -55,6 +55,10 @@ setup(
          glob(os.path.join('CartPoleExample/*'))),
 
         (os.path.join(
+            'share', package_name, 'constants/'),
+         glob(os.path.join('constants/*'))),
+
+        (os.path.join(
             'share', package_name, 'visualizers/'),
          glob(os.path.join('visualizers/*'))),
 
