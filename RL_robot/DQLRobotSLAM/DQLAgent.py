@@ -18,20 +18,21 @@ from .DuelingDQN_CNN import DuelingDQN_CNN
 from .DQLEnv import DQLEnv
 from .ToggleDemonstrationBuffer import ToggleDemonstrationBuffer
 
-# Hyperparameters
-GAMMA = 0.99
-LEARNING_RATE_START = 2e-4
-LEARNING_RATE_END = 0.5e-4
-LEARNING_RATE_DECAY = 250000
-BATCH_SIZE = 64
-BUFFER_SIZE = 50000
-MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
-EPSILON_START = 1.0
-EPSILON_END = 0.05
-EPSILON_DECAY = 250000  # Steps over which epsilon decays
-TARGET_UPDATE_FREQ = 2500  # Steps between updating the target network
-
-SAVE_NETWORK_STEP_COUNT_THRESHOLD = 100
+# Constants for learning
+from constants.constants import (
+    GAMMA,
+    LEARNING_RATE_START,
+    LEARNING_RATE_END,
+    LEARNING_RATE_DECAY,
+    BATCH_SIZE,
+    BUFFER_SIZE,
+    MIN_REPLAY_SIZE,
+    EPSILON_START,
+    EPSILON_END,
+    EPSILON_DECAY,
+    TARGET_UPDATE_FREQ,
+    SAVE_NETWORK_STEP_COUNT_THRESHOLD
+)
 
 
 class DQLAgent(Node):
@@ -83,7 +84,7 @@ class DQLAgent(Node):
                 break
             else:
                 # Allow ROS callbacks in the environment node to process
-                rclpy.spin_once(self.env.gazebo_env, timeout_sec=0.1)
+                rclpy.spin_once(self.env.sensors_processor, timeout_sec=0.1)
                 self.get_logger().info("Waiting for observation space to be initialized...", throttle_duration_sec=2.0)
                 time.sleep(0.5)
 

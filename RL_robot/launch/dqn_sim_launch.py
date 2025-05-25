@@ -7,6 +7,13 @@ from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument
 import os
 
+# Constants for learning
+from constants.constants import (
+    EPSILON_START,
+    EPSILON_END,
+    EPSILON_DECAY
+)
+
 
 def generate_launch_description():
     namePackage = 'RL_robot'
@@ -58,19 +65,19 @@ def generate_launch_description():
     # Epsilon launch arguments with defaults
     epsilon_start_arg = DeclareLaunchArgument(
         'epsilon_start',
-        default_value='1.0',
+        default_value=f'{EPSILON_START}',
         description='Initial exploration rate (epsilon) for the agent'
     )
 
     epsilon_end_arg = DeclareLaunchArgument(
         'epsilon_end',
-        default_value='0.05',
+        default_value=f'{EPSILON_END}',
         description='Final exploration rate (epsilon) for the agent'
     )
 
     epsilon_decay_arg = DeclareLaunchArgument(
         'epsilon_decay',
-        default_value='250000',
+        default_value=f'{EPSILON_DECAY}',
         description='Number of steps over which epsilon decays from start to end value'
     )
 

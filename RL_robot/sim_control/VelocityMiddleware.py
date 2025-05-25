@@ -3,9 +3,6 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 
 
-ANGULAR_SPEED_FACTOR = 1
-
-
 class VelocityMiddleware(Node):
     def __init__(self):
         super().__init__('velocity_middleware')
@@ -60,7 +57,7 @@ class VelocityMiddleware(Node):
     def cmd_vel_callback(self, msg):
         # Store the requested target velocities
         self.target_linear_vel = msg.linear.x
-        self.target_angular_vel = msg.angular.z * ANGULAR_SPEED_FACTOR
+        self.target_angular_vel = msg.angular.z
 
     def update_velocity(self):
         """Apply acceleration constraints and publish velocity"""
