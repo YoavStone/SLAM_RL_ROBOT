@@ -313,7 +313,7 @@ class RewardCalculator:
         return False
 
     def incomplete_map_punishment(self, dt):
-        pun = CONTINUES_PUNISHMENT * (1.0 - self.map_explored_percent) * dt
+        pun = 1.5 * CONTINUES_PUNISHMENT * (1.0 - self.map_explored_percent) * dt
         return pun * INCOMPLETE_MAP_PUNISHMENT
 
     def calc_reward(self, time_from_last_env_update, new_dis, new_map, grid_position, odom_pos, action):
@@ -324,7 +324,7 @@ class RewardCalculator:
 
         # Time-&-map-incompletion-based continuous punishment
         cont = self.incomplete_map_punishment(time_from_last_env_update)
-        cont += CONTINUES_PUNISHMENT * time_from_last_env_update
+        cont += CONTINUES_PUNISHMENT * time_from_last_env_update / 1.5
         self.last_cont_punishment = cont
         reward = cont
 

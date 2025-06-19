@@ -167,7 +167,7 @@ class DQLAgent(Node):
         # buffer for demonstrations of good human state action reward...
         self.demo_buffer = ToggleDemonstrationBuffer(
             max_demos=50000,
-            demo_batch_ratio=0.4,
+            demo_batch_ratio=0.3,
             auto_timeout=300,  # 5 minutes auto-timeout
             save_path="src/RL_robot/saved_networks/saved_demonstrations/demo_buffer.pkl"
         )
@@ -335,6 +335,10 @@ class DQLAgent(Node):
 
     def train_step(self):
         """Executes one step of interaction and learning."""
+        # Ensure correct modes for learning, in training activate weight dropout to prevent over fitting
+        self.q_network.train()  # dropout active
+        self.target_net.eval()  # No dropout
+
         # If current_obs is None, we need to reset or initialize
         if self.current_obs is None:
             self.current_obs, _ = self.env.reset()
@@ -409,6 +413,10 @@ class DQLAgent(Node):
 
     def execute_step(self):
         """Executes the learned policy without exploration or learning."""
+        # Ensure correct modes for execution, no dropout for max performance
+        self.q_network.eval()  # No dropout
+        self.target_net.eval()  # No dropout
+
         # Initialize observation if needed
         if self.current_obs is None:
             self.current_obs, _ = self.env.reset()

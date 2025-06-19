@@ -27,16 +27,16 @@ ROBOT_RAD_SAFE_FACTOR = 1.3  # a safe factor to multiply the rad of the robot so
 
 # Agent Hyperparameters
 GAMMA = 0.99
-LEARNING_RATE_START = 2e-4
-LEARNING_RATE_END = 0.5e-4
-LEARNING_RATE_DECAY = 250000
+LEARNING_RATE_START = 2.5e-4
+LEARNING_RATE_END = 0.8e-4  # 0.5e-4
+LEARNING_RATE_DECAY = 550000
 BATCH_SIZE = 64
 BUFFER_SIZE = 50000
 MIN_REPLAY_SIZE = 1000  # Minimum experiences in buffer before learning starts
 EPSILON_START = 1.0
-EPSILON_END = 0.025
-EPSILON_DECAY = 250000  # Steps over which epsilon decays
-TARGET_UPDATE_FREQ = 2500  # Steps between updating the target network
+EPSILON_END = 0.04
+EPSILON_DECAY = 300000  # Steps over which epsilon decays
+TARGET_UPDATE_FREQ = 1000 # 2500  # Steps between updating the target network
 
 SAVE_NETWORK_STEP_COUNT_THRESHOLD = 100
 
